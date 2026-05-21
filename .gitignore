@@ -4,4 +4,4 @@ testfiles/
 build/
 dist/
 .DS_Store
-
+output/

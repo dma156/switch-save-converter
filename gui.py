@@ -119,14 +119,14 @@ class FolderProcessorApp:
         else:
             self.process_btn.config(state=tk.DISABLED)
 
+        # Call this to update the button text dynamically
+        self.update_button_text()
+
         # Update Target dropdown based on the NEW Source selection
         self.update_target_dropdowns()
 
     def update_target_dropdowns(self):
-        """
-        Updates Target dropdown to exclude the currently selected Source format.
-        Source dropdown is NOT touched here.
-        """
+        """Updates Target dropdown to exclude the currently selected Source format."""
         source_val = self.source_var.get()
         target_val = self.target_var.get()
 
@@ -143,15 +143,69 @@ class FolderProcessorApp:
             else:
                 self.target_var.set("")
 
+        # FIX: Update button text whenever a dropdown changes
+        self.update_button_text()
+
+    def update_button_text(self):
+        """Updates the Browse button text based on Mode and Source Format."""
+        mode = self.mode.get()
+        source_format = self.source_var.get()
+
+        if mode == "manual":
+            if source_format == "Checkpoint":
+                self.select_btn.config(text="Select Checkpoint Folder")
+            elif source_format in ["Eden", "JKSV"]:
+                self.select_btn.config(text=f"Select {source_format} Zip")
+            else:
+                self.select_btn.config(text="Browse...")
+        else:
+            # Auto Mode
+            self.select_btn.config(text="Select Game Folder")
+
     def browse_folder(self):
-        """Opens file browser based on mode."""
-        folder_selected = filedialog.askdirectory(title="Select Directory")
-        
-        if folder_selected:
-            self.selected_path = Path(folder_selected)
-            self.path_label.config(text=str(self.selected_path), fg="black")
-            self.process_btn.config(state=tk.NORMAL)
-            self.status_var.set(f"Selected: {self.selected_path.name}")
+        """Opens file browser based on Mode and Source Format."""
+        mode = self.mode.get()
+        source_format = self.source_var.get()
+
+        if mode == "manual":
+            # MANUAL MODE: Behavior depends on Source Format
+            if source_format == "Checkpoint":
+                # Checkpoint expects a FOLDER structure
+                folder_selected = filedialog.askdirectory(title="Select Checkpoint Save Folder")
+                if folder_selected:
+                    self.selected_path = Path(folder_selected)
+                    self.path_label.config(text=str(self.selected_path), fg="black")
+                    self.process_btn.config(state=tk.NORMAL)
+                    self.status_var.set(f"Selected Folder: {self.selected_path.name}")
+            
+            elif source_format in ["Eden", "JKSV"]:
+                # Eden and JKSV expect a ZIP file
+                file_selected = filedialog.askopenfilename(
+                    title=f"Select {source_format} Save Zip",
+                    filetypes=[("Zip files", "*.zip"), ("All files", "*.*")]
+                )
+                if file_selected:
+                    path_obj = Path(file_selected)
+                    if path_obj.suffix.lower() != ".zip":
+                        messagebox.showwarning("Invalid File", "Please select a .zip file.")
+                        return
+                    
+                    self.selected_path = path_obj
+                    self.path_label.config(text=str(self.selected_path), fg="black")
+                    self.process_btn.config(state=tk.NORMAL)
+                    self.status_var.set(f"Selected Zip: {path_obj.name}")
+            else:
+                messagebox.showerror("Error", "Invalid Source Format selected.")
+                return
+
+        else:
+            # AUTO MODE: Always expects a Parent Directory
+            folder_selected = filedialog.askdirectory(title="Select Parent Directory")
+            if folder_selected:
+                self.selected_path = Path(folder_selected)
+                self.path_label.config(text=str(self.selected_path), fg="black")
+                self.process_btn.config(state=tk.NORMAL)
+                self.status_var.set(f"Selected: {self.selected_path.name}")
 
     def process_folder(self):
         """Executes conversion with validation for custom inputs."""
@@ -188,7 +242,7 @@ class FolderProcessorApp:
 
         try:
             converter = SaveConverterLogic(self.selected_path)
-            zip_filename, original_name, status_msg = converter.convert_and_zip(
+            zip_filename, original_name, status_msg = converter.convert(
                 source_format, target_format, is_auto_mode=is_auto
             )
             

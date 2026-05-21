@@ -11,15 +11,41 @@ import zipfile
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Tuple, Dict, Any, Union
+from typing import Tuple, Dict, Any
 
 
 class SaveConverterLogic:
     def __init__(self, base_path: Path):
         self.base_path = base_path
 
-    def _get_date_string(self) -> str:
-        return datetime.now().strftime("%Y-%m-%d")
+    def _parse_date_string(self, date, save_format) -> Date:
+        """
+        return a converted Date obj corresponding to the selected save_format
+        """
+        # YYYY-MM-DD HH_mm
+        if save_format == "Eden"
+            return datetime.strptime(date, "%Y-%m-%d %H_%M")
+        # YYYYMMDD-HHmmss
+        if save_format == "Checkpoint"
+            return datetime.strptime(date, "%Y%m%d-%H%M%S")
+        # YYYY-MM-DD_HH-mm-ss
+        if save_format == "JKSV"
+            return.datetime.strptime(date, "%Y-%m-%d_%H-%M-%S")
+
+
+    def _get_date_string(self, date : Date, save_format) -> str:
+        """
+        return a converted date string in a different date string format corresponding to the selected save_format
+        """
+        # YYYY-MM-DD HH_mm
+        if save_format == "Eden"
+            return datetime.strftime("%Y-%m-%d %H_%M")
+        # YYYYMMDD-HHmmss
+        if save_format == "Checkpoint"
+            return datetime.strftime("%Y%m%d-%H%M%S")
+        # YYYY-MM-DD_HH-mm-ss
+        if save_format == "JKSV"
+            return.datetime.strftime("%Y-%m-%d_%H-%M-%S")
 
     # --- Validation Logic ---
 
@@ -30,120 +56,162 @@ class SaveConverterLogic:
         2. Finds the NEWEST folder inside that game folder.
         3. Validates the newest folder's name.
         """
-        sub_dirs = [d for d in target_path.iterdir() if d.is_dir()]
-        if not sub_dirs:
-            return False
-
-        # 1. Check if the selected folder name itself starts with "0x"
         if not target_path.name.startswith("0x"):
             return False
             
-        # 2. Find the NEWEST folder inside the game folder
-        inner_dirs = [d for d in save_folder.iterdir() if d.is_dir()]
+        inner_dirs = [d for d in target_path.iterdir() if d.is_dir()]
         if not inner_dirs:
             return False
             
         newest_inner = max(inner_dirs, key=lambda p: p.stat().st_mtime)
-        
-        # 3. Validate the newest folder's name
         return self._validate_checkpoint_save(newest_inner)
-
 
     def _validate_checkpoint_save(self, save_folder_path: Path) -> bool:
         """
         Validates the specific folder name for the 'Date Time Username' structure.
         Expects format: YYYYMMDD-HHmmss Username
-        Example: 20231025-143022 FOO
         """
         folder_name = save_folder_path.name
-        
-        # Regex: ^(\d{8})-(\d{6})\s+(.+)$
-        return match = re.match(r"^(\d{8})-(\d{6})\s+(.+)$", folder_name)
-
+        match = re.match(r"^(\d{8})-(\d{6})\s+(.+)$", folder_name)
+        return bool(match)
 
     def _validate_jksv_structure(self, target_path: Path) -> bool:
         """
         Validates JKSV structure: Game Title -> User - YYYY-MM-DD-HH_mm_ss.zip
-        Checks:
-        1. Exists a subdirectory (Game Title).
-        2. Inside that, exists a .zip file.
-        3. The .zip filename matches: "AnyString - YYYY-MM-DD-HH_mm_ss"
+        Finds the NEWEST zip file in the directory and validates it.
         """
-        sub_dirs = [d for d in target_path.iterdir() if d.is_dir()]
-        if not sub_dirs:
-            return False
-
-        for d in sub_dirs:
-            zip_files = [f for f in d.iterdir() if f.suffix == ".zip"]
-            for zf in zip_files:
-                if self._validate_jksv_save(zf):
-                    return True
+        if target_path.is_file():
+            return self._validate_jksv_save(target_path)
         
-        return False
+        # Directory mode: Find all zips, pick newest
+        zip_files = [f for f in target_path.iterdir() if f.is_file() and f.suffix == ".zip"]
+        if not zip_files:
+            return False
+        
+        newest_zip = max(zip_files, key=lambda p: p.stat().st_mtime)
+        return self._validate_jksv_save(newest_zip)
 
     def _validate_jksv_save(self, save_zip: Path) -> bool:
         """
-        Check filename format: "String - YYYY-MM-DD-HH_mm_ss"
-        Regex: ^(.+)\s+-\s+(\d{4}-\d{2}-\d{2}-\d{2}_\d{2}_\d{2})\.zip$
-        1. (.+) Any characters (Title/User)
-        2. \s+-\s+ Space, Hyphen, Space
-        3. (\d{4}-\d{2}-\d{2}-\d{2}_\d{2}_\d{2}) Date and Time
-        4. \.zip Extension
+        Check filename format: "String - YYYY-MM-DD_HH-mm-ss"
+        Allows whitespace in 'String' (e.g., "User Name - Date").
         """
-        if re.match(r"^(.+)\s+-\s+(\d{4}-\d{2}-\d{2}-\d{2}_\d{2}_\d{2})\.zip$", save_zip.name):
+        # Regex breakdown:
+        # ^              : Start of string
+        # (.+)           : Capture Group 1: One or more of ANY character (including spaces) for the "String" part
+        # \s+-\s+        : One or more spaces, a hyphen, one or more spaces (the separator " - ")
+        # (\d{4}-...)    : Capture Group 2: The specific date/time format
+        # \.zip$         : Ends with .zip
+        pattern = r"^(.+)\s+-\s+(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})\.zip$"
+        
+        if re.match(pattern, save_zip.name):
             return True
         return False
 
     def _validate_eden_structure(self, target_path: Path) -> bool:
-        """Validates Eden structure: Title Save Data - Date.zip (at root)"""
-        return any(f.suffix == ".zip" for f in target_path.iterdir())
+        """
+        Validates Eden structure.
+        Finds the NEWEST zip file if directory, or validates file directly.
+        """
+        if target_path.is_file():
+            if target_path.suffix != ".zip":
+                return False
+            return self._validate_eden_save(target_path)
+        
+        # Directory mode: Find all zips, pick newest
+        zip_files = [f for f in target_path.iterdir() if f.is_file() and f.suffix == ".zip"]
+        if not zip_files:
+            return False
+        
+        newest_zip = max(zip_files, key=lambda p: p.stat().st_mtime)
+        return self._validate_eden_save(newest_zip)
 
-    def _verify_source_format(self, target_path: Path, expected_format: str) -> None:
+    def _validate_eden_save(self, save_zip: Path) -> bool:
+        """
+        Check filename format: "Game Name save data - YYYY-MM-DD HH_mm"
+        """
+        if re.match(r'^(.+)\s+save\s+data\s+-\s+(\d{4}-\d{2}-\d{2}\s+\d{2}_\d{2})\.zip$', save_zip.name):
+            return True
+        return False
+
+    def _verify_source_format(self, target_path: Path, expected_format: str, is_auto_mode: bool) -> None:
         """Sanity check: Ensures the path matches the expected format."""
         if expected_format == "Checkpoint":
-            if is_manual:
+            if not is_auto_mode:
                 if not self._validate_checkpoint_save(target_path):
                     raise ValueError(f"Format 'Checkpoint' mismatch in '{target_path.name}'.\nExpected folder name: \"DateTime User\" e.g. 20260422-193917 USERMAN")
             else:
                 if not self._validate_checkpoint_structure(target_path):
-                    raise ValueError(f"Format 'Checkpoint' mismatch in '{target_path.name}'.\nExpected: [Parent] -> 0xID Title -> Date User -> Files")
-            if not self._validate_jksv_structure(target_path):
-                raise ValueError(f"Format 'JKSV' mismatch in '{target_path.name}'.\nExpected: Game Title -> User - Date.zip")
+                    raise ValueError(f"Format 'Checkpoint' mismatch in '{target_path.name}'.\nExpected: Folder starts with '0x' and contains a 'DateTime User' subfolder.")
+        
+        elif expected_format == "JKSV":
+            if not is_auto_mode:
+                if target_path.is_file():
+                    if not self._validate_jksv_save(target_path):
+                        raise ValueError(f"Format 'JKSV' mismatch in '{target_path.name}'.\nExpected zip file named \"User - DateTime\".")
+                else:
+                    if not self._validate_jksv_structure(target_path):
+                        raise ValueError(f"Format 'JKSV' mismatch in '{target_path.name}'.\nExpected a zip file named \"User - DateTime\" inside the folder.")
+            else:
+                if not self._validate_jksv_structure(target_path):
+                    raise ValueError(f"Format 'JKSV' mismatch in '{target_path.name}'.\nExpected: Game Title folder -> User - DateTime.zip")
+
         elif expected_format == "Eden":
             if not self._validate_eden_structure(target_path):
-                raise ValueError(f"Format 'Eden' mismatch in '{target_path.name}'.\nExpected: Title Save Data - Date.zip")
+                raise ValueError(f"Format 'Eden' mismatch in '{target_path.name}'.\nExpected: \"[Game Name] save data - DateTime\".zip")
         else:
             raise ValueError(f"Unknown source format: {expected_format}")
 
     # --- Extraction Logic ---
 
     def _extract_info_from_checkpoint(self, target_path: Path) -> Dict[str, Any]:
-        sub_folders = [f for f in target_path.iterdir() if f.is_dir()]
-        id_title_folder = sub_folders[0]
-        folder_name = id_title_folder.name
-        
+        if target_path.name.startswith("0x"):
+            # Auto Mode: target_path is the Game Folder
+            id_title_folder = target_path
+            folder_name = target_path.name
+            
+            inner_folders = [f for f in id_title_folder.iterdir() if f.is_dir()]
+            if not inner_folders:
+                raise ValueError("Checkpoint structure invalid: No save folder found.")
+            date_user_folder = max(inner_folders, key=lambda p: p.stat().st_mtime)
+        else:
+            # Manual Mode: target_path IS the save folder (YYYYMMDD...)
+            date_user_folder = target_path
+            folder_name = target_path.name
+            match = re.match(r"(\d{8})-(\d{6})\s+(.+)$", folder_name)
+            if match:
+                username = match.group(3)
+                y, m, d = folder_name[:4], folder_name[4:6], folder_name[6:8]
+                date_str = f"{y}-{m}-{d}"
+            else:
+                username = "Unknown"
+                date_str = self._get_date_string()
+            
+            return {
+                "game_title": "Unknown_Game",
+                "user_id": "Unknown_ID",
+                "date": date_str,
+                "username": username,
+                "source_files": list(date_user_folder.iterdir())
+            }
+
         game_title = folder_name
         user_id = ""
         if folder_name.startswith("0x"):
-            # Skip the first 2 characters ("0x") and take the rest as the title
-            user_id = folder_name[:2]  # "0x"
-            game_title = folder_name[2:].strip() # Everything after "0x", stripped of leading/trailing whitespace
-            
-            # If the result is empty after stripping, fallback to Unknown
+            user_id = folder_name[:2]
+            game_title = folder_name[2:].strip()
             if not game_title:
                 game_title = "Unknown Game"
         else:
             user_id = folder_name
             game_title = "Unknown Game"
 
-        inner_folders = [f for f in id_title_folder.iterdir() if f.is_dir()]
-        date_user_folder = inner_folders[0]
         inner_name = date_user_folder.name
-        
-        date_match = re.match(r"(\d{4}-\d{2}-\d{2})\s+(.*)", inner_name)
-        if date_match:
-            date_str = date_match.group(1)
-            username = date_match.group(2)
+        match = re.match(r"(\d{8})-(\d{6})\s+(.+)$", inner_name)
+        if match:
+            y, m, d = match.group(1)[:4], match.group(1)[4:6], match.group(1)[6:8]
+            date_str = f"{y}-{m}-{d}"
+            username = match.group(3)
         else:
             date_str = self._get_date_string()
             username = inner_name
@@ -151,17 +219,44 @@ class SaveConverterLogic:
         return {"game_title": game_title, "user_id": user_id, "date": date_str, "username": username, "source_files": list(date_user_folder.iterdir())}
 
     def _extract_info_from_jksv(self, target_path: Path) -> Dict[str, Any]:
-        sub_folders = [f for f in target_path.iterdir() if f.is_dir()]
-        title_folder = sub_folders[0]
-        game_title = title_folder.name
-        
-        zip_files = [f for f in title_folder.iterdir() if f.suffix == ".zip"]
-        jksv_zip = zip_files[0]
+        # Determine the zip file to use
+        if target_path.is_file():
+            if target_path.suffix != ".zip":
+                raise ValueError("JKSV source must be a .zip file.")
+            jksv_zip = target_path
+            game_title = "Unknown_Game"
+        else:
+            # Directory mode: Find all zips, pick newest
+            zip_files = [f for f in target_path.iterdir() if f.is_file() and f.suffix == ".zip"]
+            if not zip_files:
+                raise ValueError("JKSV structure invalid: No zip file found.")
+            
+            jksv_zip = max(zip_files, key=lambda p: p.stat().st_mtime)
+            
+            # Try to find game title from parent folder name if possible
+            # If the zip is directly in the root, we don't have a title folder
+            # If the zip is in a subfolder, we use that subfolder name
+            parent = jksv_zip.parent
+            if parent == target_path:
+                game_title = "Unknown_Game"
+            else:
+                game_title = parent.name
+
         zip_name = jksv_zip.stem
-        
         parts = zip_name.split(" - ")
         username = parts[0] if len(parts) >= 1 else "Unknown User"
-        date_str = parts[-1] if len(parts) >= 2 else self._get_date_string()
+        date_str = parts[-1] if len(parts) >= 2 else self._get_date_string() # is this parsing the data properly???
+        print(username)
+        print(date_str)
+        
+        #wtf is this
+        # if "-" in date_str:
+        #     date_str = date_str.split("-")[0]
+        # else:
+        date_str = self._get_date_string()
+
+        print(date_str)
+            
         user_id = "Unknown_ID" 
         
         temp_extract_dir = self.base_path / "_temp_extract"
@@ -180,13 +275,30 @@ class SaveConverterLogic:
         return {"game_title": game_title, "user_id": user_id, "date": date_str, "username": username, "source_files": files_to_process}
 
     def _extract_info_from_eden(self, target_path: Path) -> Dict[str, Any]:
-        zip_files = [f for f in target_path.iterdir() if f.suffix == ".zip"]
-        eden_zip = zip_files[0]
+        # Determine the zip file to use
+        if target_path.is_file():
+            if target_path.suffix != ".zip":
+                raise ValueError("Eden source must be a .zip file.")
+            eden_zip = target_path
+        else:
+            # Directory mode: Find all zips, pick newest
+            zip_files = [f for f in target_path.iterdir() if f.is_file() and f.suffix == ".zip"]
+            if not zip_files:
+                raise ValueError("Eden structure invalid: No zip file found.")
+            
+            eden_zip = max(zip_files, key=lambda p: p.stat().st_mtime)
+            
         zip_name = eden_zip.stem
-        
         parts = zip_name.split(" - ")
         date_str = parts[-1] if len(parts) >= 2 else self._get_date_string()
-        game_title = " ".join(parts[:-1]).replace(" Save Data", "")
+        if " " in date_str:
+            date_str = date_str.split(" ")[0]
+        elif "-" in date_str:
+            date_str = date_str.split("-")[0]
+        else:
+            date_str = self._get_date_string()
+            
+        game_title = " ".join(parts[:-1]).replace(" save data", "").replace("Save Data", "").strip()
         
         temp_extract_dir = self.base_path / "_temp_extract"
         temp_extract_dir.mkdir(exist_ok=True)
@@ -208,38 +320,37 @@ class SaveConverterLogic:
 
     # --- Main Conversion Logic ---
 
-    def convert_and_zip(self, source_format: str, target_format: str, is_auto_mode: bool = False) -> Tuple[str, str, str]:
+    def convert(self, source_format: str, target_format: str, is_auto_mode: bool = False) -> Tuple[str, str, str]:
         """
         Converts save data.
-        Args:
-            source_format: Selected format (Checkpoint, JKSV, Eden).
-            target_format: Target format.
-            is_auto_mode: If True, finds the latest modified folder in base_path.
-                          If False, treats base_path as the specific save folder.
-        Returns: (zip_filename, original_source_name, status_message)
+        Output files are saved in: script_directory/output/target_format/
         """
         if source_format == target_format:
             raise ValueError("Source and Target formats are identical.")
 
         # Determine the actual source path
         if is_auto_mode:
-            # Find latest modified directory in base_path
-            sub_dirs = [d for d in self.base_path.iterdir() if d.is_dir()]
-            if not sub_dirs:
-                raise FileNotFoundError("No save folders found in the selected directory.")
+            candidates = []
+            for item in self.base_path.iterdir():
+                if item.is_dir():
+                    candidates.append(item)
+                elif item.is_file() and item.suffix == ".zip":
+                    candidates.append(item)
             
-            latest_dir = max(sub_dirs, key=lambda p: p.stat().st_mtime)
-            source_path = latest_dir
-            original_source_name = latest_dir.name
+            if not candidates:
+                raise FileNotFoundError("No save folders or zip files found in the selected directory.")
+            
+            latest_item = max(candidates, key=lambda p: p.stat().st_mtime)
+            source_path = latest_item
+            original_source_name = latest_item.name
             status_msg = f"Auto-detected: {original_source_name}"
         else:
-            # Manual mode: base_path IS the save folder
             source_path = self.base_path
             original_source_name = source_path.name
             status_msg = f"Manual selection: {original_source_name}"
 
         # Sanity Check
-        self._verify_source_format(source_path, source_format)
+        self._verify_source_format(source_path, source_format, is_auto_mode)
 
         # Extract Info
         info = {}
@@ -255,8 +366,12 @@ class SaveConverterLogic:
         except Exception as e:
             raise RuntimeError(f"Failed to parse source data: {str(e)}")
 
-        # Construct Target
-        target_path = self.base_path / target_format
+        # --- Output Directory Logic ---
+        script_dir = Path(__file__).parent.resolve()
+        output_base_dir = script_dir / "output"
+        target_path = output_base_dir / target_format
+        
+        output_base_dir.mkdir(exist_ok=True)
         target_path.mkdir(exist_ok=True)
         
         files_to_copy = info["source_files"]
@@ -275,7 +390,7 @@ class SaveConverterLogic:
                 shutil.copy2(src_file, cp_date_user / src_file.name)
             
             zip_filename = f"{cp_id_title}.zip"
-            zip_path = self.base_path / zip_filename
+            zip_path = target_path / zip_filename
             with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
                 for root, _, files in os.walk(cp_inner_folder):
                     for file in files:
