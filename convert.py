@@ -23,14 +23,14 @@ class SaveConverterLogic:
         return a converted Date obj corresponding to the selected save_format
         """
         # YYYY-MM-DD HH_mm
-        if save_format == "Eden"
+        if save_format == "Eden":
             return datetime.strptime(date, "%Y-%m-%d %H_%M")
         # YYYYMMDD-HHmmss
-        if save_format == "Checkpoint"
+        if save_format == "Checkpoint":
             return datetime.strptime(date, "%Y%m%d-%H%M%S")
         # YYYY-MM-DD_HH-mm-ss
-        if save_format == "JKSV"
-            return.datetime.strptime(date, "%Y-%m-%d_%H-%M-%S")
+        if save_format == "JKSV":
+            return datetime.strptime(date, "%Y-%m-%d_%H-%M-%S")
 
 
     def _get_date_string(self, date : Date, save_format) -> str:
@@ -38,14 +38,14 @@ class SaveConverterLogic:
         return a converted date string in a different date string format corresponding to the selected save_format
         """
         # YYYY-MM-DD HH_mm
-        if save_format == "Eden"
+        if save_format == "Eden":
             return datetime.strftime("%Y-%m-%d %H_%M")
         # YYYYMMDD-HHmmss
-        if save_format == "Checkpoint"
+        if save_format == "Checkpoint":
             return datetime.strftime("%Y%m%d-%H%M%S")
         # YYYY-MM-DD_HH-mm-ss
-        if save_format == "JKSV"
-            return.datetime.strftime("%Y-%m-%d_%H-%M-%S")
+        if save_format == "JKSV":
+            return datetime.strftime("%Y-%m-%d_%H-%M-%S")
 
     # --- Validation Logic ---
 
