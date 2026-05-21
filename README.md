@@ -1,4 +1,12 @@
-Save file structure
+# Switch Save Converter
+
+- This program was written mostly with Proton's Lumo AI. 
+
+Converts save file formats between Eden, Checkpoint and JKSV
+
+
+
+### Save file structure
 
 - Checkpoint
 > 0x0 Hex? ID then Switch Title or the same ID again
