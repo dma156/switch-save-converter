@@ -22,9 +22,9 @@ class SaveConverterLogic:
         """
         return a converted Date obj corresponding to the selected save_format
         """
-        # YYYY-MM-DD HH_mm
+        # YYYY-MM-DD HH:mm
         if save_format == "Eden":
-            return datetime.strptime(date, "%Y-%m-%d %H_%M")
+            return datetime.strptime(date, "%Y-%m-%d %H:%M")
         # YYYYMMDD-HHmmss
         if save_format == "Checkpoint":
             return datetime.strptime(date, "%Y%m%d-%H%M%S")
@@ -37,9 +37,9 @@ class SaveConverterLogic:
         """
         return a converted date string in a different date string format corresponding to the selected save_format
         """
-        # YYYY-MM-DD HH_mm
+        # YYYY-MM-DD HH:mm
         if save_format == "Eden":
-            return datetime.strftime("%Y-%m-%d %H_%M")
+            return datetime.strftime("%Y-%m-%d %H:%M")
         # YYYYMMDD-HHmmss
         if save_format == "Checkpoint":
             return datetime.strftime("%Y%m%d-%H%M%S")
@@ -128,7 +128,7 @@ class SaveConverterLogic:
 
     def _validate_eden_save(self, save_zip: Path) -> bool:
         """
-        Check filename format: "Game Name save data - YYYY-MM-DD HH_mm"
+        Check filename format: "Game Name save data - YYYY-MM-DD HH:mm"
         """
         if re.match(r'^(.+)\s+save\s+data\s+-\s+(\d{4}-\d{2}-\d{2}\s+\d{2}_\d{2})\.zip$', save_zip.name):
             return True

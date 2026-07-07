@@ -1,17 +1,17 @@
 # Switch Save Converter
 
-- This program was written mostly with Proton's Lumo AI. 
+- This program was written with assistance from Proton's Lumo AI. 
 
 Converts save file formats between Eden, Checkpoint and JKSV
 
-
+Please note that JKSV seems to backup save files much better e.g. Tomadachi Life LTD custom creations are included in the save file, but not in Checkpoint.
 
 ### Save file structure
 
 - Checkpoint
 
-Checkpoint save format 
-A folder which includes the actual game save file(s) in the format of [Date Switch User] (YYYYMMDD-HHmmss User) e.g. 20260223-162127 guntar
+Checkpoint save format
+A folder which includes the actual game save file(s) in the format of [Date Switch User] (YYYYMMDD-HHmmss username) e.g. 20260223-162127 guntar
 
 Checkpoint Folder structure 
 > A folder with the name format of the Switch game ID in Hex (OxO...) and then the name of the game, or the same ID repeated. The repeated ID format is common for Pokemon games.
@@ -29,6 +29,6 @@ JKSV Folder structure
 		> Files directly inside, with no folders.
 
 - Eden
-No folder structure will be checked, just a singular zip file that has the format of [Game Name Save Data - Date.zip] e.g. Pokémon Violet save data - 2026-05-20 18_02.zip
+No folder structure will be checked, just a singular zip file that has the format of [Game Name Save Data - Date.zip] e.g. Pokémon Violet save data - 2026-05-20 18_02.zip or Tomodachi Life_ Living the Dream save data - 2026-05-28 17:36.zip
 	> Inside will be a folder named after the 0x0 Switch Hex ID
 		> Then inside the folder will be the actual save files

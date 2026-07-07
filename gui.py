@@ -39,7 +39,7 @@ class FolderProcessorApp:
         mode_frame.pack(pady=5)
         tk.Label(mode_frame, text="Mode:", font=("Arial", 10)).pack(side=tk.LEFT, padx=5)
         
-        tk.Radiobutton(mode_frame, text="Manual (Select Save)", variable=self.mode, value="manual", command=self.update_ui_state).pack(side=tk.LEFT, padx=5)
+        tk.Radiobutton(mode_frame, text="Manual Select", variable=self.mode, value="manual", command=self.update_ui_state).pack(side=tk.LEFT, padx=5)
         tk.Radiobutton(mode_frame, text="Newest Save File", variable=self.mode, value="newest", command=self.update_ui_state).pack(side=tk.LEFT, padx=5)
 
         # Configuration Frame (Dropdowns)
