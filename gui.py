@@ -4,6 +4,7 @@ GUI for the Switch Save Converter.
 Features:
 - Editable Dropdowns (state=""): Users can select from list OR type.
 - Logic: Source restricted by Mode; Target filtered by Source.
+- Dynamic Title ID entry for Eden conversions.
 - No custom autocomplete logic; uses standard Tkinter behavior.
 """
 import tkinter as tk
@@ -16,10 +17,10 @@ class FolderProcessorApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Switch Save Converter")
-        self.root.geometry("750x350")
+        self.root.geometry("750x400")  # Increased height for new field
         
         self.selected_path = None
-        self.mode = tk.StringVar(value="manual") # 'manual' or 'newest'
+        self.mode = tk.StringVar(value="manual")  # 'manual' or 'newest'
         self.status_var = tk.StringVar()
         self.status_var.set("Ready. Select mode and browse.")
         
@@ -27,6 +28,9 @@ class FolderProcessorApp:
         self.all_formats = ["Checkpoint", "Eden", "JKSV"]
         self.manual_formats = self.all_formats
         self.newest_formats = ["Checkpoint", "JKSV"]
+        
+        # New Title ID variable
+        self.title_id_var = tk.StringVar()
 
         # --- UI Layout ---
         
@@ -77,6 +81,18 @@ class FolderProcessorApp:
         self.select_btn = tk.Button(select_frame, text="Browse...", command=self.browse_folder)
         self.select_btn.pack(side=tk.LEFT, padx=5)
 
+        # Title ID Entry Box (New!)
+        title_id_frame = tk.Frame(root)
+        title_id_frame.pack(pady=5)
+        
+        self.title_id_label = tk.Label(title_id_frame, text="Title ID:", font=("Arial", 10))
+        self.title_id_entry = tk.Entry(title_id_frame, textvariable=self.title_id_var, width=25)
+        self.title_id_label.pack(side=tk.LEFT, padx=5)
+        self.title_id_entry.pack(side=tk.LEFT, padx=5)
+        
+        self.title_id_hint = tk.Label(title_id_frame, text="(Only needed for Eden conversion)", fg="gray", font=("Arial", 9))
+        self.title_id_hint.pack(side=tk.LEFT, padx=5)
+
         # Action Button
         self.process_btn = tk.Button(root, text="Convert", command=self.process_folder, 
                                      bg="#4CAF50", fg="white", font=("Arial", 12), state=tk.DISABLED)
@@ -86,6 +102,9 @@ class FolderProcessorApp:
         status_bar = tk.Label(root, textvariable=self.status_var, bd=1, relief=tk.SUNKEN, anchor=tk.W)
         status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
+        # Store reference to title_id_frame for visibility control
+        self.title_id_frame = title_id_frame
+        
         # Initial setup
         self.update_ui_state()
 
@@ -121,9 +140,22 @@ class FolderProcessorApp:
 
         # Call this to update the button text dynamically
         self.update_button_text()
+        
+        # Show/Hide Title ID entry based on Source Format
+        self.toggle_title_id_field()
 
         # Update Target dropdown based on the NEW Source selection
         self.update_target_dropdowns()
+
+    def toggle_title_id_field(self):
+        """Shows or hides the Title ID entry box based on Source Format."""
+        source_format = self.source_var.get()
+        
+        if source_format == "Eden":
+            self.title_id_frame.pack(pady=5)
+            self.title_id_entry.focus_set()  # Auto-focus for convenience
+        else:
+            self.title_id_frame.pack_forget()
 
     def update_target_dropdowns(self):
         """Updates Target dropdown to exclude the currently selected Source format."""
@@ -145,6 +177,9 @@ class FolderProcessorApp:
 
         # FIX: Update button text whenever a dropdown changes
         self.update_button_text()
+        
+        # Toggle Title ID field
+        self.toggle_title_id_field()
 
     def update_button_text(self):
         """Updates the Browse button text based on Mode and Source Format."""
@@ -215,6 +250,7 @@ class FolderProcessorApp:
         source_format = self.source_var.get().strip()
         target_format = self.target_var.get().strip()
         is_auto = self.mode.get() == "newest"
+        title_id = self.title_id_var.get().strip()  # Get Title ID value
 
         # Validation for Custom Inputs
         valid_formats = ["Checkpoint", "Eden", "JKSV"]
@@ -236,14 +272,19 @@ class FolderProcessorApp:
             messagebox.showerror("Mode Restriction", "Eden is not supported in 'Newest Save File' mode.")
             return
 
+        # Validate Title ID for Eden (optional but recommended)
+        if source_format == "Eden" and not title_id:
+            title_id = None  # Will trigger auto-detection in convert.py
+
         self.status_var.set("Processing...")
         self.process_btn.config(state=tk.DISABLED)
         self.root.update()
 
         try:
+            # Pass title_id to the converter
             converter = SaveConverterLogic(self.selected_path)
             zip_filename, original_name, status_msg = converter.convert(
-                source_format, target_format, is_auto_mode=is_auto
+                source_format, target_format, title_id=title_id, is_auto_mode=is_auto, remove_tempfiles_when_done=False
             )
             
             self.status_var.set(f"{status_msg} -> {target_format}")

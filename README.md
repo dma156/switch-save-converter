@@ -13,7 +13,7 @@ Please note that JKSV seems to backup save files much better e.g. Tomadachi Life
 Checkpoint save format
 A folder which includes the actual game save file(s) in the format of [Date Switch User] (YYYYMMDD-HHmmss username) e.g. 20260223-162127 guntar
 
-Checkpoint Folder structure 
+Checkpoint Folder structure
 > A folder with the name format of the Switch game ID in Hex (OxO...) and then the name of the game, or the same ID repeated. The repeated ID format is common for Pokemon games.
 	> This folder will then include the actual Checkpoint save folder(s) containing the game save file(s) in the format of [Date Switch User] (YYYYMMDD-HHmmss User) e.g. 20260223-162127 guntar
 		> Actual game files
@@ -30,5 +30,18 @@ JKSV Folder structure
 
 - Eden
 No folder structure will be checked, just a singular zip file that has the format of [Game Name Save Data - Date.zip] e.g. Pokémon Violet save data - 2026-05-20 18_02.zip or Tomodachi Life_ Living the Dream save data - 2026-05-28 17:36.zip
-	> Inside will be a folder named after the 0x0 Switch Hex ID
+	> Inside will be a folder named after the 0x0 Switch Hex ID e.g. 01008F6008C5E000
 		> Then inside the folder will be the actual save files
+
+- checklist
+
+Manual Select
+Checkpoint > Eden DONE
+JKSV > Eden 
+Eden > JKSV
+Eden > checkpoint
+
+
+
+
+

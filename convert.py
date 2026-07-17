@@ -181,8 +181,8 @@ class SaveConverterLogic:
             match = re.match(r"(\d{8})-(\d{6})\s+(.+)$", folder_name)
             if match:
                 username = match.group(3)
-                y, m, d = folder_name[:4], folder_name[4:6], folder_name[6:8]
-                date_str = f"{y}-{m}-{d}"
+                y, m, d, H, M = folder_name[:4], folder_name[4:6], folder_name[6:8], folder_name[9:11], folder_name[11:13]
+                date_str = f"{y}-{m}-{d} {H}_{M}"
             else:
                 username = "Unknown"
                 date_str = self._get_date_string()
@@ -246,33 +246,27 @@ class SaveConverterLogic:
         parts = zip_name.split(" - ")
         username = parts[0] if len(parts) >= 1 else "Unknown User"
         date_str = parts[-1] if len(parts) >= 2 else self._get_date_string() # is this parsing the data properly???
-        print(username)
-        print(date_str)
+        print("user: " + username)
+        print("date: " + date_str)
         
-        #wtf is this
-        # if "-" in date_str:
-        #     date_str = date_str.split("-")[0]
-        # else:
-        date_str = self._get_date_string()
-
-        print(date_str)
-            
-        user_id = "Unknown_ID" 
+        user_id = "Unknown_ID"
         
-        temp_extract_dir = self.base_path / "_temp_extract"
+        # create temp extract directory
+        temp_extract_dir = self.base_path.parent / "_temp_extract"
         temp_extract_dir.mkdir(exist_ok=True)
         with zipfile.ZipFile(jksv_zip, 'r') as zip_ref:
             zip_ref.extractall(temp_extract_dir)
             
+        # return list of files to process to be converted to zip or folder depending on output type
         files_to_process = []
         for item in temp_extract_dir.iterdir():
             if item.is_file(): files_to_process.append(item)
             elif item.is_dir():
                 for f in item.rglob("*"):
                     if f.is_file(): files_to_process.append(f)
-        shutil.rmtree(temp_extract_dir)
+        # shutil.rmtree(temp_extract_dir)
 
-        return {"game_title": game_title, "user_id": user_id, "date": date_str, "username": username, "source_files": files_to_process}
+        return {"game_title": game_title, "user_id": user_id, "date": date_str, "username": username, "source_files": files_to_process, "temp_dir": temp_extract_dir}
 
     def _extract_info_from_eden(self, target_path: Path) -> Dict[str, Any]:
         # Determine the zip file to use
@@ -300,7 +294,7 @@ class SaveConverterLogic:
             
         game_title = " ".join(parts[:-1]).replace(" save data", "").replace("Save Data", "").strip()
         
-        temp_extract_dir = self.base_path / "_temp_extract"
+        temp_extract_dir = self.base_path.parent / "_temp_extract"
         temp_extract_dir.mkdir(exist_ok=True)
         with zipfile.ZipFile(eden_zip, 'r') as zip_ref:
             zip_ref.extractall(temp_extract_dir)
@@ -314,13 +308,14 @@ class SaveConverterLogic:
         files_to_process = []
         for f in id_folder.rglob("*"):
             if f.is_file(): files_to_process.append(f)
-        shutil.rmtree(temp_extract_dir)
+        # shutil.rmtree(temp_extract_dir)
 
-        return {"game_title": game_title, "user_id": user_id, "date": date_str, "username": "Unknown", "source_files": files_to_process}
+        return {"game_title": game_title, "user_id": user_id, "date": date_str, "username": "Unknown", "source_files": files_to_process, "temp_dir": temp_extract_dir}
 
     # --- Main Conversion Logic ---
 
-    def convert(self, source_format: str, target_format: str, is_auto_mode: bool = False) -> Tuple[str, str, str]:
+# perhaps make title_id a hex type instead of str?
+    def convert(self, source_format: str, target_format: str, title_id: str, is_auto_mode: bool = False, remove_tempfiles_when_done: bool = False) -> Tuple[str, str, str]:
         """
         Converts save data.
         Output files are saved in: script_directory/output/target_format/
@@ -363,8 +358,15 @@ class SaveConverterLogic:
                 info = self._extract_info_from_eden(source_path)
             else:
                 raise ValueError(f"Unsupported source format: {source_format}")
+
+            # debug - input file/folder
+            print("Found " + str(info["source_files"]))
+            if source_format == "Checkpoint":
+                print("Converting input folder " + str(original_source_name))
+            else:
+                print("Converting input file " + str(original_source_name))
         except Exception as e:
-            raise RuntimeError(f"Failed to parse source data: {str(e)}")
+            raise RuntimeError(f"Failed to parse source data: {str(e)}")        
 
         # --- Output Directory Logic ---
         script_dir = Path(__file__).parent.resolve()
@@ -379,6 +381,7 @@ class SaveConverterLogic:
         user_id = info["user_id"]
         date_str = info["date"]
         username = info["username"]
+        temp_dir = info.get("temp_dir")
 
         if target_format == "Checkpoint":
             cp_id_title = f"{user_id} {game_title}"
@@ -403,21 +406,47 @@ class SaveConverterLogic:
             jksv_title_folder.mkdir(exist_ok=True)
             jksv_zip_name = f"{username} - {date_str}.zip"
             jksv_zip_path = jksv_title_folder / jksv_zip_name
+            temp_dir = info.get("temp_dir")
             with zipfile.ZipFile(jksv_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
                 for src_file in files_to_copy:
-                    zipf.write(src_file, src_file.name)
+                    if temp_dir is not None:
+                        rel_path = src_file.relative_to(temp_dir)
+                        arcname = rel_path
+                    else:
+                        arcname = src_file.name
+                    
+                    # Skip __MACOSX folder
+                    if '__MACOSX' in rel_path.parts if temp_dir else '__MACOSX' in src_file.parts:
+                        continue
+                    zipf.write(src_file, arcname)
             zip_filename = jksv_zip_name
-
+            
         elif target_format == "Eden":
             eden_zip_name = f"{game_title} Save Data - {date_str}.zip"
             eden_zip_path = target_path / eden_zip_name
+            temp_dir = info.get("temp_dir")
             with zipfile.ZipFile(eden_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
                 for src_file in files_to_copy:
-                    arcname = f"{user_id}/{src_file.name}"
+                    if temp_dir is not None:
+                        rel_path = src_file.relative_to(temp_dir)
+                        arcname = f"{user_id}/{rel_path}"
+                        
+                        # Skip __MACOSX folder
+                        if '__MACOSX' in rel_path.parts:
+                            continue
+                    else:
+                        arcname = f"{user_id}/{src_file.name}"
                     zipf.write(src_file, arcname)
             zip_filename = eden_zip_name
 
         else:
             raise ValueError(f"Unsupported target format: {target_format}")
+
+        # delete tempfiles from a zip extraction if bool is True
+        if remove_tempfiles_when_done:
+            shutil.rmtree(temp_dir)
+
+        # debug - output file/folder
+        print("Conversion Success! \n Output @ " + str(target_path) + "/" + str(zip_filename))
 
         return zip_filename, original_source_name, status_msg
