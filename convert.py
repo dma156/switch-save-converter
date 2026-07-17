@@ -24,7 +24,7 @@ class SaveConverterLogic:
         """
         # YYYY-MM-DD HH:mm
         if save_format == "Eden":
-            return datetime.strptime(date, "%Y-%m-%d %H:%M")
+            return datetime.strptime(date, "%Y-%m-%d %H_%M")
         # YYYYMMDD-HHmmss
         if save_format == "Checkpoint":
             return datetime.strptime(date, "%Y%m%d-%H%M%S")
@@ -39,7 +39,7 @@ class SaveConverterLogic:
         """
         # YYYY-MM-DD HH:mm
         if save_format == "Eden":
-            return date.strftime("%Y-%m-%d %H:%M")
+            return date.strftime("%Y-%m-%d %H_%M")
         # YYYYMMDD-HHmmss
         if save_format == "Checkpoint":
             return date.strftime("%Y%m%d-%H%M%S")
@@ -139,7 +139,7 @@ class SaveConverterLogic:
         if expected_format == "Checkpoint":
             if not is_auto_mode:
                 if not self._validate_checkpoint_save(target_path):
-                    raise ValueError(f"Format 'Checkpoint' mismatch in '{target_path.name}'.\nExpected folder name: \"DateTime User\" e.g. 20260422-193917 USERMAN")
+                    raise ValueError(f"Format 'Checkpoint' mismatch in '{target_path.name}'.\nExpected folder name: \"DateTime User\" e.g. 20260422-193917 USERNAME")
             else:
                 if not self._validate_checkpoint_structure(target_path):
                     raise ValueError(f"Format 'Checkpoint' mismatch in '{target_path.name}'.\nExpected: Folder starts with '0x' and contains a 'DateTime User' subfolder.")
@@ -158,7 +158,7 @@ class SaveConverterLogic:
 
         elif expected_format == "Eden":
             if not self._validate_eden_structure(target_path):
-                raise ValueError(f"Format 'Eden' mismatch in '{target_path.name}'.\nExpected: \"[Game Name] save data - DateTime\".zip")
+                raise ValueError(f"Format 'Eden' mismatch in '{target_path.name}'.\nExpected: \"[Game Name] save data - YYYY-MM-DD HH_mm\".zip")
         else:
             raise ValueError(f"Unknown source format: {expected_format}")
 
@@ -166,7 +166,6 @@ class SaveConverterLogic:
 
     def _extract_info_from_checkpoint(self, target_path: Path) -> Dict[str, Any]:
         if target_path.name.startswith("0x"):
-            # Auto Mode: target_path is the Game Folder
             id_title_folder = target_path
             folder_name = target_path.name
             
@@ -175,24 +174,33 @@ class SaveConverterLogic:
                 raise ValueError("Checkpoint structure invalid: No save folder found.")
             date_user_folder = max(inner_folders, key=lambda p: p.stat().st_mtime)
         else:
-            # Manual Mode: target_path IS the save folder (YYYYMMDD...)
             date_user_folder = target_path
             folder_name = target_path.name
             match = re.match(r"(\d{8})-(\d{6})\s+(.+)$", folder_name)
             if match:
                 username = match.group(3)
                 y, m, d, H, M = folder_name[:4], folder_name[4:6], folder_name[6:8], folder_name[9:11], folder_name[11:13]
-                date_str = f"{y}-{m}-{d} {H}_{M}"
+                date_str = f"{y}-{m}-{d} {H}:{M}"
             else:
                 username = "Unknown"
-                date_str = self._get_date_string()
+                date_str = self._get_date_string(datetime.now(), "Checkpoint")
+            
+            # Return proper tuples even for manual mode
+            files_to_process = []
+            for root, dirs, files in os.walk(date_user_folder):
+                dirs[:] = [d for d in dirs if d != '__MACOSX']
+                for file in files:
+                    src_path = Path(root) / file
+                    rel_path = src_path.relative_to(date_user_folder)
+                    files_to_process.append((src_path, rel_path))
             
             return {
                 "game_title": "Unknown_Game",
                 "user_id": "Unknown_ID",
                 "date": date_str,
                 "username": username,
-                "source_files": list(date_user_folder.iterdir())
+                "source_files": files_to_process,  # Now tuples
+                "temp_dir": None  # No temp dir for plain folder source
             }
 
         game_title = folder_name
@@ -211,12 +219,21 @@ class SaveConverterLogic:
         if match:
             username = match.group(3)
             y, m, d, H, M = folder_name[:4], folder_name[4:6], folder_name[6:8], folder_name[9:11], folder_name[11:13]
-            date_str = f"{y}-{m}-{d} {H}_{M}"
+            date_str = f"{y}-{m}-{d} {H}:{M}"
         else:
-            date_str = self._get_date_string()
+            date_str = self._get_date_string(datetime.now(), "Checkpoint")
             username = inner_name
+        
+        # Collect files with relative paths
+        files_to_process = []
+        for root, dirs, files in os.walk(date_user_folder):
+            dirs[:] = [d for d in dirs if d != '__MACOSX']
+            for file in files:
+                src_path = Path(root) / file
+                rel_path = src_path.relative_to(date_user_folder)
+                files_to_process.append((src_path, rel_path))
 
-        return {"game_title": game_title, "user_id": user_id, "date": date_str, "username": username, "source_files": list(date_user_folder.iterdir())}
+        return {"game_title": game_title, "user_id": user_id, "date": date_str, "username": username, "source_files": files_to_process, "temp_dir": None}
 
     def _extract_info_from_jksv(self, target_path: Path) -> Dict[str, Any]:
         # Determine the zip file to use
@@ -377,6 +394,9 @@ class SaveConverterLogic:
         # --- Output Directory Logic ---
         script_dir = Path(__file__).parent.resolve()
         output_base_dir = script_dir / "output"
+
+        # access debug meme idk
+        output_base_dir = script_dir / "in and out/output"
         target_path = output_base_dir / target_format
         
         output_base_dir.mkdir(exist_ok=True)
@@ -388,6 +408,11 @@ class SaveConverterLogic:
         date_str = info["date"]
         username = info["username"]
         temp_dir = info.get("temp_dir")
+
+        # Sanitise colon : in any file or folder names, will appear in date most likely
+        date_str = date_str.replace(":", "_")
+        # Do the same for game title
+        game_title = game_title.replace(":", "_")
 
         if target_format == "Checkpoint":
             cp_id_title = f"{user_id} {game_title}"

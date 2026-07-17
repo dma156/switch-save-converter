@@ -29,7 +29,7 @@ JKSV Folder structure
 		> Files directly inside, with no folders.
 
 - Eden
-No folder structure will be checked, just a singular zip file that has the format of [Game Name Save Data - Date.zip] e.g. Pokémon Violet save data - 2026-05-20 18_02.zip or Tomodachi Life_ Living the Dream save data - 2026-05-28 17:36.zip
+No folder structure will be checked, just a singular zip file that has the format of [Game Name Save Data - Date.zip] e.g. Pokémon Violet save data - 2026-05-20 18_02.zip or Tomodachi Life_ Living the Dream save data - 2026-05-28 17_36.zip
 	> Inside will be a folder named after the 0x0 Switch Hex ID e.g. 01008F6008C5E000
 		> Then inside the folder will be the actual save files
 
@@ -37,11 +37,15 @@ No folder structure will be checked, just a singular zip file that has the forma
 
 Manual Select
 Checkpoint > Eden DONE
+JKSV > Eden DONE
+Eden > JKSV DONE
+Eden > checkpoint DONE
+
+newest save file in folder 
+Checkpoint > Eden
 JKSV > Eden 
 Eden > JKSV
 Eden > checkpoint
-
-
 
 
 
