@@ -18,34 +18,42 @@ class SaveConverterLogic:
     def __init__(self, base_path: Path):
         self.base_path = base_path
 
-    def _parse_date_string(self, date, save_format) -> datetime:
+    def _parse_date_string(self, date_str: str, save_format: str) -> datetime:
         """
-        return a converted Date obj corresponding to the selected save_format
+        Parse a date string into datetime based on source format.
         """
-        # YYYY-MM-DD HH:mm
+        # YYYY-MM-DD HH_mm (HH:mm is attempted in the Eden Android emulator but is replace by HH_mm)
         if save_format == "Eden":
-            return datetime.strptime(date, "%Y-%m-%d %H_%M")
+            return datetime.strptime(date_str, "%Y-%m-%d %H_%M")
         # YYYYMMDD-HHmmss
         if save_format == "Checkpoint":
-            return datetime.strptime(date, "%Y%m%d-%H%M%S")
+            return datetime.strptime(date_str, "%Y%m%d-%H%M%S")
         # YYYY-MM-DD_HH-mm-ss
         if save_format == "JKSV":
-            return datetime.strptime(date, "%Y-%m-%d_%H-%M-%S")
+            return datetime.strptime(date_str, "%Y-%m-%d_%H-%M-%S")
+        raise ValueError(f"Unknown format: {save_format}")
 
-
-    def _get_date_string(self, date : datetime, save_format) -> str:
+    def _get_date_string(self, dt: datetime, save_format: str) -> str:
         """
-        return a converted date string in a different date string format corresponding to the selected save_format
+        Format datetime into string based on target format.
         """
-        # YYYY-MM-DD HH:mm
+        # YYYY-MM-DD HH:mm (uses underscore in time)
         if save_format == "Eden":
-            return date.strftime("%Y-%m-%d %H_%M")
+            return dt.strftime("%Y-%m-%d %H_%M")
         # YYYYMMDD-HHmmss
         if save_format == "Checkpoint":
-            return date.strftime("%Y%m%d-%H%M%S")
+            return dt.strftime("%Y%m%d-%H%M%S")
         # YYYY-MM-DD_HH-mm-ss
         if save_format == "JKSV":
-            return date.strftime("%Y-%m-%d_%H-%M-%S")
+            return dt.strftime("%Y-%m-%d_%H-%M-%S")
+        raise ValueError(f"Unknown format: {save_format}")
+
+    def _sanitize_for_filename(self, text: str) -> str:
+        """
+        Sanitize text for use in filenames/folders on Windows.
+        Global replacement of colons (and other problematic chars).
+        """
+        return text.replace(":", "_").replace("\\", "/").replace("*", "")
 
     # --- Validation Logic ---
 
@@ -56,13 +64,13 @@ class SaveConverterLogic:
         2. Finds the NEWEST folder inside that game folder.
         3. Validates the newest folder's name.
         """
-        if not target_path.parent.name.startswith("0x"):
+        if not target_path.name.startswith("0x"):
             return False
-
-        inner_dirs = [d for d in target_path.parent.iterdir() if d.is_dir()]
+            
+        inner_dirs = [d for d in target_path.iterdir() if d.is_dir()]
         if not inner_dirs:
             return False
-
+            
         newest_inner = max(inner_dirs, key=lambda p: p.stat().st_mtime)
         return self._validate_checkpoint_save(newest_inner)
 
@@ -80,14 +88,11 @@ class SaveConverterLogic:
         Validates JKSV structure: Game Title -> User - YYYY-MM-DD-HH_mm_ss.zip
         Finds the NEWEST zip file in the directory and validates it.
         """
-        print(target_path)
-        print(target_path.parent)
         if target_path.is_file():
             return self._validate_jksv_save(target_path)
-        print("zip file pass")
-
+        
         # Directory mode: Find all zips, pick newest
-        zip_files = [f for f in target_path.parent.iterdir() if f.is_file() and f.suffix == ".zip"]
+        zip_files = [f for f in target_path.iterdir() if f.is_file() and f.suffix == ".zip"]
         if not zip_files:
             return False
         
@@ -97,7 +102,8 @@ class SaveConverterLogic:
     def _validate_jksv_save(self, save_zip: Path) -> bool:
         """
         Check filename format: "String - YYYY-MM-DD_HH-mm-ss"
-        Allows any characters in 'String' (e.g., "---essx---").
+        Allows any characters in 'String' (e.g., "---esx-'"). 
+        N.B. JKSV will not allow colons in names and will not save the zip file if a colon is manually added to the filename.
         """
         filename = save_zip.name
         
@@ -145,7 +151,7 @@ class SaveConverterLogic:
 
     def _validate_eden_save(self, save_zip: Path) -> bool:
         """
-        Check filename format: "Game Name save data - YYYY-MM-DD HH:mm"
+        Check filename format: "Game Name save data - YYYY-MM-DD HH_mm"
         """
         if re.match(r'^(.+)\s+save\s+data\s+-\s+(\d{4}-\d{2}-\d{2}\s+\d{2}_\d{2})\.zip$', save_zip.name):
             return True
@@ -196,13 +202,18 @@ class SaveConverterLogic:
             match = re.match(r"(\d{8})-(\d{6})\s+(.+)$", folder_name)
             if match:
                 username = match.group(3)
-                y, m, d, H, M, S = folder_name[:4], folder_name[4:6], folder_name[6:8], folder_name[9:11], folder_name[11:13], folder_name[13:15]
-                date_str = f"{y}-{m}-{d} {H}:{M}:{S}"
+                try:
+                    date_dt = datetime.strptime(folder_name[:15], "%Y%m%d-%H%M%S")
+                    date_str = self._get_date_string(date_dt, "Checkpoint")
+                except ValueError:
+                    date_dt = datetime.now()
+                    date_str = self._get_date_string(date_dt, "Checkpoint")
             else:
                 username = "Unknown"
-                date_str = self._get_date_string(datetime.now(), "Checkpoint")
+                date_dt = datetime.now()
+                date_str = self._get_date_string(date_dt, "Checkpoint")
             
-            # Return proper tuples even for manual mode
+            # Collect files with relative paths
             files_to_process = []
             for root, dirs, files in os.walk(date_user_folder):
                 dirs[:] = [d for d in dirs if d != '__MACOSX']
@@ -212,12 +223,13 @@ class SaveConverterLogic:
                     files_to_process.append((src_path, rel_path))
             
             return {
-                "game_title": "Unknown_Game",
-                "user_id": "Unknown_ID",
+                "game_title": "UnknownGame",
+                "user_id": "UnknownID",
                 "date": date_str,
+                "date_dt": date_dt,
                 "username": username,
-                "source_files": files_to_process,  # Now tuples
-                "temp_dir": None  # No temp dir for plain folder source
+                "source_files": files_to_process,
+                "temp_dir": None
             }
 
         game_title = folder_name
@@ -235,10 +247,15 @@ class SaveConverterLogic:
         match = re.match(r"(\d{8})-(\d{6})\s+(.+)$", inner_name)
         if match:
             username = match.group(3)
-            y, m, d, H, M, S = folder_name[:4], folder_name[4:6], folder_name[6:8], folder_name[9:11], folder_name[11:13], folder_name[13:15]
-            date_str = f"{y}-{m}-{d} {H}:{M}:{S}"
+            try:
+                date_dt = datetime.strptime(inner_name[:15], "%Y%m%d-%H%M%S")
+                date_str = self._get_date_string(date_dt, "Checkpoint")
+            except ValueError:
+                date_dt = datetime.now()
+                date_str = self._get_date_string(date_dt, "Checkpoint")
         else:
-            date_str = self._get_date_string(datetime.now(), "Checkpoint")
+            date_dt = datetime.now()
+            date_str = self._get_date_string(date_dt, "Checkpoint")
             username = inner_name
         
         # Collect files with relative paths
@@ -250,7 +267,15 @@ class SaveConverterLogic:
                 rel_path = src_path.relative_to(date_user_folder)
                 files_to_process.append((src_path, rel_path))
 
-        return {"game_title": game_title, "user_id": user_id, "date": date_str, "username": username, "source_files": files_to_process, "temp_dir": None}
+        return {
+            "game_title": game_title, 
+            "user_id": user_id, 
+            "date": date_str,
+            "date_dt": date_dt,
+            "username": username, 
+            "source_files": files_to_process, 
+            "temp_dir": None
+        }
 
     def _extract_info_from_jksv(self, target_path: Path) -> Dict[str, Any]:
         # Determine the zip file to use
@@ -258,20 +283,29 @@ class SaveConverterLogic:
             if target_path.suffix != ".zip":
                 raise ValueError("JKSV source must be a .zip file.")
             jksv_zip = target_path
-            game_title = "Unknown_Game"
+            game_title = "Game"
         else:
             zip_files = [f for f in target_path.iterdir() if f.is_file() and f.suffix == ".zip"]
             if not zip_files:
                 raise ValueError("JKSV structure invalid: No zip file found.")
             jksv_zip = max(zip_files, key=lambda p: p.stat().st_mtime)
             parent = jksv_zip.parent
-            game_title = parent.name if parent != target_path else "Unknown_Game"
+            game_title = parent.name if parent != target_path else "UnknownGame"
 
         zip_name = jksv_zip.stem
-        parts = zip_name.split(" - ")
-        username = parts[0] if len(parts) >= 1 else "Unknown User"
-        date_str = parts[-1] if len(parts) >= 2 else self._get_date_string()
-        user_id = "Unknown_ID"
+        parts = zip_name.rsplit(" - ", 1)
+        if len(parts) == 2:
+            username = parts[0].strip()
+            date_part = parts[1]
+            try:
+                date_dt = datetime.strptime(date_part, "%Y-%m-%d_%H-%M-%S")
+            except ValueError:
+                date_dt = datetime.now()
+        else:
+            username = "Unknown User"
+            date_dt = datetime.now()
+        
+        user_id = "UnknownID"
         
         # create temp extract directory
         temp_extract_dir = self.base_path.parent / "_temp_extract"
@@ -282,20 +316,22 @@ class SaveConverterLogic:
         # Collect files WITH their relative paths (preserve structure)
         files_to_process = []
         for root, dirs, files in os.walk(temp_extract_dir):
-            # Skip __MACOSX
             dirs[:] = [d for d in dirs if d != '__MACOSX']
             for file in files:
-                if file != '__MACOSX':  # Also catch standalone __MACOSX files
+                if file != '__MACOSX':
                     src_path = Path(root) / file
                     rel_path = src_path.relative_to(temp_extract_dir)
                     files_to_process.append((src_path, rel_path))
         
+        date_str = self._get_date_string(date_dt, "JKSV")
+        
         return {
             "game_title": game_title, 
             "user_id": user_id, 
-            "date": date_str, 
+            "date": date_str,
+            "date_dt": date_dt,
             "username": username, 
-            "source_files": files_to_process,  # Now tuples of (abs_path, rel_path)
+            "source_files": files_to_process,
             "temp_dir": temp_extract_dir
         }
 
@@ -311,16 +347,18 @@ class SaveConverterLogic:
             eden_zip = max(zip_files, key=lambda p: p.stat().st_mtime)
             
         zip_name = eden_zip.stem
-        parts = zip_name.split(" - ")
-        date_str = parts[-1] if len(parts) >= 2 else self._get_date_string()
-        if " " in date_str:
-            date_str = date_str.split(" ")[0]
-        elif "-" in date_str:
-            date_str = date_str.split("-")[0]
+        parts = zip_name.rsplit(" - ", 1)
+        if len(parts) == 2:
+            game_raw = parts[0].replace("save data", "").replace("Save Data", "").strip()
+            date_part = parts[1]
+            game_title = game_raw
+            try:
+                date_dt = datetime.strptime(date_part, "%Y-%m-%d %H:%M")
+            except ValueError:
+                date_dt = datetime.now()
         else:
-            date_str = self._get_date_string()
-            
-        game_title = " ".join(parts[:-1]).replace(" save data", "").replace("Save Data", "").strip()
+            game_title = "Unknown Game"
+            date_dt = datetime.now()
         
         temp_extract_dir = self.base_path.parent / "_temp_extract"
         temp_extract_dir.mkdir(exist_ok=True)
@@ -343,10 +381,13 @@ class SaveConverterLogic:
                 rel_path = src_path.relative_to(id_folder)
                 files_to_process.append((src_path, rel_path))
         
+        date_str = self._get_date_string(date_dt, "Eden")
+        
         return {
             "game_title": game_title, 
             "user_id": user_id, 
-            "date": date_str, 
+            "date": date_str,
+            "date_dt": date_dt,
             "username": "Unknown", 
             "source_files": files_to_process,
             "temp_dir": temp_extract_dir
@@ -354,7 +395,6 @@ class SaveConverterLogic:
 
     # --- Main Conversion Logic ---
 
-    # perhaps make title_id a hex type instead of str?
     def convert(self, source_format: str, target_format: str, title_id: str, is_auto_mode: bool = False, remove_tempfiles_when_done: bool = False) -> Tuple[str, str, str]:
         """
         Converts save data.
@@ -410,10 +450,7 @@ class SaveConverterLogic:
 
         # --- Output Directory Logic ---
         script_dir = Path(__file__).parent.resolve()
-        output_base_dir = script_dir / "output"
-
-        # access debug meme idk
-        output_base_dir = script_dir / "in and out/output"
+        output_base_dir = script_dir / "in and out" / "output"
         target_path = output_base_dir / target_format
         
         output_base_dir.mkdir(exist_ok=True)
@@ -422,14 +459,18 @@ class SaveConverterLogic:
         files_to_copy = info["source_files"]
         game_title = info["game_title"]
         user_id = info["user_id"]
-        date_str = info["date"]
+        date_dt = info["date_dt"]
         username = info["username"]
         temp_dir = info.get("temp_dir")
 
-        # Sanitise colon : in any file or folder names, will appear in date most likely
-        date_str = date_str.replace(":", "_")
-        # Do the same for game title
-        game_title = game_title.replace(":", "_")
+        # Get target-format-specific date string, then sanitize globally
+        date_str = self._get_date_string(date_dt, target_format)
+        date_str = self._sanitize_for_filename(date_str)
+        
+        # Sanitize all output components globally
+        game_title = self._sanitize_for_filename(game_title)
+        username = self._sanitize_for_filename(username)
+        user_id = self._sanitize_for_filename(user_id)
 
         if target_format == "Checkpoint":
             cp_id_title = f"{user_id} {game_title}"
@@ -450,13 +491,13 @@ class SaveConverterLogic:
             
             # Create zip from the inner folder
             output_name = cp_id_title
+            output_path = cp_inner_folder # get folder name here somehow
 
         elif target_format == "JKSV":
             jksv_title_folder = target_path / game_title
             jksv_title_folder.mkdir(exist_ok=True)
             jksv_zip_name = f"{username} - {date_str}.zip"
             jksv_zip_path = jksv_title_folder / jksv_zip_name
-            temp_dir = info.get("temp_dir")
             with zipfile.ZipFile(jksv_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
                 for src_file, rel_path in files_to_copy:
                     if '__MACOSX' in rel_path.parts:
@@ -464,11 +505,11 @@ class SaveConverterLogic:
                     arcname = rel_path
                     zipf.write(src_file, arcname)
             output_name = jksv_zip_name
+            output_path = jksv_zip_path
 
         elif target_format == "Eden":
             eden_zip_name = f"{game_title} Save Data - {date_str}.zip"
             eden_zip_path = target_path / eden_zip_name
-            temp_dir = info.get("temp_dir")
             with zipfile.ZipFile(eden_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
                 for src_file, rel_path in files_to_copy:
                     if '__MACOSX' in rel_path.parts:
@@ -476,15 +517,16 @@ class SaveConverterLogic:
                     arcname = f"{user_id}/{rel_path}"
                     zipf.write(src_file, arcname)
             output_name = eden_zip_name
+            output_path = eden_zip_path
 
         else:
             raise ValueError(f"Unsupported target format: {target_format}")
 
         # Delete tempfiles folder from a zip extraction if remove_tempfiles_when_done bool is True
-        if remove_tempfiles_when_done:
+        if remove_tempfiles_when_done and temp_dir:
             shutil.rmtree(temp_dir)
 
         # Debug - output file/folder
-        print("Conversion Success! \nOutput @ " + str(target_path) + "/" + str(output_name))
+        print("Conversion Success! \nOutput @ " + str(output_path))
 
         return output_name, original_source_name, status_msg

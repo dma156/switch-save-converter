@@ -6,6 +6,8 @@ Features:
 - Logic: Source restricted by Mode; Target filtered by Source.
 - Dynamic Title ID entry for Eden conversions.
 - No custom autocomplete logic; uses standard Tkinter behavior.
+- Checkbox for cleaning temporary extraction files after conversion.
+- Scrollable path display for long filepaths.
 """
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -17,7 +19,7 @@ class FolderProcessorApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Switch Save Converter")
-        self.root.geometry("750x400")  # Increased height for new field
+        self.root.geometry("800x450")  # Increased height for new checkbox
         
         self.selected_path = None
         self.mode = tk.StringVar(value="manual")  # 'manual' or 'newest'
@@ -27,10 +29,14 @@ class FolderProcessorApp:
         # Explicitly defined lists
         self.all_formats = ["Checkpoint", "Eden", "JKSV"]
         self.manual_formats = self.all_formats
-        self.newest_formats = ["Checkpoint", "JKSV"]
+        # Auto mode now supports Eden as well
+        self.newest_formats = ["Checkpoint", "Eden", "JKSV"]
         
         # New Title ID variable
         self.title_id_var = tk.StringVar()
+        
+        # Temporary files cleanup checkbox
+        self.remove_tempfiles_var = tk.BooleanVar(value=False)
 
         # --- UI Layout ---
         
@@ -71,17 +77,20 @@ class FolderProcessorApp:
         self.target_combo.pack(pady=5)
         self.target_combo.bind("<<ComboboxSelected>>", lambda e: self.update_target_dropdowns())
 
-        # Selection Frame
+        # Selection Frame (Scrollable Path Entry)
         select_frame = tk.Frame(root)
         select_frame.pack(pady=10)
 
-        self.path_label = tk.Label(select_frame, text="No folder selected", fg="gray", width=50, anchor="w")
-        self.path_label.pack(side=tk.LEFT, padx=5)
+        # Use a read-only Entry instead of Label for horizontal scrolling
+        self.path_entry = tk.Entry(select_frame, width=55, state='readonly',
+                                   relief=tk.SUNKEN, fg="gray")
+        self.path_entry.insert(0, "No folder selected")
+        self.path_entry.pack(side=tk.LEFT, padx=5)
 
         self.select_btn = tk.Button(select_frame, text="Browse...", command=self.browse_folder)
         self.select_btn.pack(side=tk.LEFT, padx=5)
 
-        # Title ID Entry Box (New!)
+        # Title ID Entry Box
         title_id_frame = tk.Frame(root)
         title_id_frame.pack(pady=5)
         
@@ -93,6 +102,27 @@ class FolderProcessorApp:
         self.title_id_hint = tk.Label(title_id_frame, text="(Only needed for Eden conversion)", fg="gray", font=("Arial", 9))
         self.title_id_hint.pack(side=tk.LEFT, padx=5)
 
+        # Cleanup Temp Files Checkbox (only for Eden/JKSV)
+        cleanup_frame = tk.Frame(root)
+        cleanup_frame.pack(pady=5)
+        
+        self.cleanup_checkbutton = tk.Checkbutton(
+            cleanup_frame,
+            text="Remove temporary extraction files after conversion",
+            variable=self.remove_tempfiles_var,
+            font=("Arial", 10)
+        )
+        self.cleanup_checkbutton.pack(anchor=tk.W, padx=20)
+        
+        # Add a hint label
+        self.cleanup_hint = tk.Label(
+            cleanup_frame,
+            text="(Recommended: Uncheck if you want to inspect extracted files)",
+            fg="gray",
+            font=("Arial", 9)
+        )
+        self.cleanup_hint.pack(anchor=tk.W, padx=20)
+
         # Action Button
         self.process_btn = tk.Button(root, text="Convert", command=self.process_folder, 
                                      bg="#4CAF50", fg="white", font=("Arial", 12), state=tk.DISABLED)
@@ -102,11 +132,21 @@ class FolderProcessorApp:
         status_bar = tk.Label(root, textvariable=self.status_var, bd=1, relief=tk.SUNKEN, anchor=tk.W)
         status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
-        # Store reference to title_id_frame for visibility control
+        # Store references for visibility control
         self.title_id_frame = title_id_frame
+        self.cleanup_frame = cleanup_frame
         
         # Initial setup
         self.update_ui_state()
+
+    def _set_path_display(self, text, color="gray"):
+        """Helper to update the path entry text, color, and scroll to end."""
+        self.path_entry.config(state=tk.NORMAL)
+        self.path_entry.delete(0, tk.END)
+        self.path_entry.insert(0, text)
+        self.path_entry.config(fg=color, state='readonly')
+        # Scroll to the end so the user sees the filename
+        self.path_entry.xview_moveto(1.0)
 
     def update_ui_state(self):
         """Updates UI labels and Source dropdown options based on selected mode."""
@@ -116,20 +156,20 @@ class FolderProcessorApp:
             # Manual: Source allows ALL formats
             self.source_combo['values'] = ["Checkpoint", "Eden", "JKSV"]
             self.select_btn.config(text="Browse Save Folder")
-            self.path_label.config(text="Select the specific save folder or zip file.")
+            self._set_path_display("Select the specific save folder or zip file.")
             
             # Ensure source is valid
             if self.source_var.get() not in ["Checkpoint", "Eden", "JKSV"]:
                 self.source_var.set("Checkpoint")
 
         else:
-            # Newest: Source excludes Eden
-            self.source_combo['values'] = ["Checkpoint", "JKSV"]
+            # Newest: Source now includes Eden (supports Eden -> Checkpoint/JKSV)
+            self.source_combo['values'] = ["Checkpoint", "Eden", "JKSV"]
             self.select_btn.config(text="Browse Parent Directory")
-            self.path_label.config(text="Select the parent directory. The newest save inside will be converted.")
+            self._set_path_display("Select the parent directory. The newest save inside will be converted.")
             
-            # If Eden was selected, force reset
-            if self.source_var.get() == "Eden":
+            # If a format is somehow invalid, reset to Checkpoint
+            if self.source_var.get() not in ["Checkpoint", "Eden", "JKSV"]:
                 self.source_var.set("Checkpoint")
 
         # Enable button only if path is selected
@@ -143,6 +183,9 @@ class FolderProcessorApp:
         
         # Show/Hide Title ID entry based on Source Format
         self.toggle_title_id_field()
+        
+        # Show/Hide cleanup checkbox based on Source Format
+        self.toggle_cleanup_field()
 
         # Update Target dropdown based on the NEW Source selection
         self.update_target_dropdowns()
@@ -156,6 +199,32 @@ class FolderProcessorApp:
             self.title_id_entry.focus_set()  # Auto-focus for convenience
         else:
             self.title_id_frame.pack_forget()
+
+    def toggle_cleanup_field(self):
+        """Shows or hides the cleanup checkbox based on Source Format."""
+        source_format = self.source_var.get()
+        
+        if source_format in ["Eden", "JKSV"]:
+            self.cleanup_frame.pack(pady=5)
+            # Reset checkbox value when showing (default unchecked)
+            self.remove_tempfiles_var.set(False)
+        else:
+            self.cleanup_frame.pack_forget()
+            # Deselect checkbox when hidden
+            self.remove_tempfiles_var.set(False)
+
+    def update_cleanup_visibility(self):
+        """Controls hint text for cleanup checkbox based on source type."""
+        source_format = self.source_var.get()
+        mode = self.mode.get()
+        
+        # Hint text changes based on whether temp files will actually exist
+        if source_format in ["Eden", "JKSV"] and mode == "manual":
+            # These are zips, so temp extraction will occur
+            self.cleanup_hint.config(text="(Recommended: Uncheck if you want to inspect extracted files)")
+        else:
+            # Folder sources or auto mode may not create temp dirs
+            self.cleanup_hint.config(text="(Only affects zip extractions)")
 
     def update_target_dropdowns(self):
         """Updates Target dropdown to exclude the currently selected Source format."""
@@ -175,11 +244,17 @@ class FolderProcessorApp:
             else:
                 self.target_var.set("")
 
-        # FIX: Update button text whenever a dropdown changes
+        # Update button text whenever a dropdown changes
         self.update_button_text()
         
         # Toggle Title ID field
         self.toggle_title_id_field()
+        
+        # Toggle cleanup field
+        self.toggle_cleanup_field()
+        
+        # Update cleanup hint
+        self.update_cleanup_visibility()
 
     def update_button_text(self):
         """Updates the Browse button text based on Mode and Source Format."""
@@ -209,7 +284,7 @@ class FolderProcessorApp:
                 folder_selected = filedialog.askdirectory(title="Select Checkpoint Save Folder")
                 if folder_selected:
                     self.selected_path = Path(folder_selected)
-                    self.path_label.config(text=str(self.selected_path), fg="black")
+                    self._set_path_display(str(self.selected_path), "black")
                     self.process_btn.config(state=tk.NORMAL)
                     self.status_var.set(f"Selected Folder: {self.selected_path.name}")
             
@@ -226,7 +301,7 @@ class FolderProcessorApp:
                         return
                     
                     self.selected_path = path_obj
-                    self.path_label.config(text=str(self.selected_path), fg="black")
+                    self._set_path_display(str(self.selected_path), "black")
                     self.process_btn.config(state=tk.NORMAL)
                     self.status_var.set(f"Selected Zip: {path_obj.name}")
             else:
@@ -238,7 +313,7 @@ class FolderProcessorApp:
             folder_selected = filedialog.askdirectory(title="Select Parent Directory")
             if folder_selected:
                 self.selected_path = Path(folder_selected)
-                self.path_label.config(text=str(self.selected_path), fg="black")
+                self._set_path_display(str(self.selected_path), "black")
                 self.process_btn.config(state=tk.NORMAL)
                 self.status_var.set(f"Selected: {self.selected_path.name}")
 
@@ -250,7 +325,8 @@ class FolderProcessorApp:
         source_format = self.source_var.get().strip()
         target_format = self.target_var.get().strip()
         is_auto = self.mode.get() == "newest"
-        title_id = self.title_id_var.get().strip()  # Get Title ID value
+        title_id = self.title_id_var.get().strip()
+        remove_tempfiles = self.remove_tempfiles_var.get()
 
         # Validation for Custom Inputs
         valid_formats = ["Checkpoint", "Eden", "JKSV"]
@@ -267,10 +343,7 @@ class FolderProcessorApp:
             messagebox.showerror("Invalid Selection", "Source and Target cannot be the same!")
             return
 
-        # Additional Mode Check for Source
-        if is_auto and source_format == "Eden":
-            messagebox.showerror("Mode Restriction", "Eden is not supported in 'Newest Save File' mode.")
-            return
+        # No longer restricting Eden in auto mode - now supports Eden -> Checkpoint/JKSV
 
         # Validate Title ID for Eden (optional but recommended)
         if source_format == "Eden" and not title_id:
@@ -281,17 +354,22 @@ class FolderProcessorApp:
         self.root.update()
 
         try:
-            # Pass title_id to the converter
+            # Pass title_id and remove_tempfiles to the converter
             converter = SaveConverterLogic(self.selected_path)
             zip_filename, original_name, status_msg = converter.convert(
-                source_format, target_format, title_id=title_id, is_auto_mode=is_auto, remove_tempfiles_when_done=False
+                source_format, 
+                target_format, 
+                title_id=title_id, 
+                is_auto_mode=is_auto, 
+                remove_tempfiles_when_done=remove_tempfiles
             )
             
             self.status_var.set(f"{status_msg} -> {target_format}")
             self.root.update()
             
-            self.status_var.set(f"Success! Created {zip_filename}")
-            messagebox.showinfo("Success", f"Conversion complete!\nSource: {original_name}\nCreated: {zip_filename}")
+            cleanup_note = " (temp files removed)" if remove_tempfiles else ""
+            self.status_var.set(f"Success! Created {zip_filename}{cleanup_note}")
+            messagebox.showinfo("Success", f"Conversion complete!\nSource: {original_name}\nCreated: {zip_filename}{cleanup_note}")
 
         except FileNotFoundError as e:
             self.status_var.set("Error: Folder not found.")
