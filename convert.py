@@ -18,7 +18,7 @@ class SaveConverterLogic:
     def __init__(self, base_path: Path):
         self.base_path = base_path
 
-    def _parse_date_string(self, date, save_format) -> Date:
+    def _parse_date_string(self, date, save_format) -> datetime:
         """
         return a converted Date obj corresponding to the selected save_format
         """
@@ -33,19 +33,19 @@ class SaveConverterLogic:
             return datetime.strptime(date, "%Y-%m-%d_%H-%M-%S")
 
 
-    def _get_date_string(self, date : Date, save_format) -> str:
+    def _get_date_string(self, date : datetime, save_format) -> str:
         """
         return a converted date string in a different date string format corresponding to the selected save_format
         """
         # YYYY-MM-DD HH:mm
         if save_format == "Eden":
-            return datetime.strftime("%Y-%m-%d %H:%M")
+            return date.strftime("%Y-%m-%d %H:%M")
         # YYYYMMDD-HHmmss
         if save_format == "Checkpoint":
-            return datetime.strftime("%Y%m%d-%H%M%S")
+            return date.strftime("%Y%m%d-%H%M%S")
         # YYYY-MM-DD_HH-mm-ss
         if save_format == "JKSV":
-            return datetime.strftime("%Y-%m-%d_%H-%M-%S")
+            return date.strftime("%Y-%m-%d_%H-%M-%S")
 
     # --- Validation Logic ---
 
@@ -209,9 +209,9 @@ class SaveConverterLogic:
         inner_name = date_user_folder.name
         match = re.match(r"(\d{8})-(\d{6})\s+(.+)$", inner_name)
         if match:
-            y, m, d = match.group(1)[:4], match.group(1)[4:6], match.group(1)[6:8]
-            date_str = f"{y}-{m}-{d}"
             username = match.group(3)
+            y, m, d, H, M = folder_name[:4], folder_name[4:6], folder_name[6:8], folder_name[9:11], folder_name[11:13]
+            date_str = f"{y}-{m}-{d} {H}_{M}"
         else:
             date_str = self._get_date_string()
             username = inner_name
@@ -226,29 +226,17 @@ class SaveConverterLogic:
             jksv_zip = target_path
             game_title = "Unknown_Game"
         else:
-            # Directory mode: Find all zips, pick newest
             zip_files = [f for f in target_path.iterdir() if f.is_file() and f.suffix == ".zip"]
             if not zip_files:
                 raise ValueError("JKSV structure invalid: No zip file found.")
-            
             jksv_zip = max(zip_files, key=lambda p: p.stat().st_mtime)
-            
-            # Try to find game title from parent folder name if possible
-            # If the zip is directly in the root, we don't have a title folder
-            # If the zip is in a subfolder, we use that subfolder name
             parent = jksv_zip.parent
-            if parent == target_path:
-                game_title = "Unknown_Game"
-            else:
-                game_title = parent.name
+            game_title = parent.name if parent != target_path else "Unknown_Game"
 
         zip_name = jksv_zip.stem
         parts = zip_name.split(" - ")
         username = parts[0] if len(parts) >= 1 else "Unknown User"
-        date_str = parts[-1] if len(parts) >= 2 else self._get_date_string() # is this parsing the data properly???
-        print("user: " + username)
-        print("date: " + date_str)
-        
+        date_str = parts[-1] if len(parts) >= 2 else self._get_date_string()
         user_id = "Unknown_ID"
         
         # create temp extract directory
@@ -256,30 +244,36 @@ class SaveConverterLogic:
         temp_extract_dir.mkdir(exist_ok=True)
         with zipfile.ZipFile(jksv_zip, 'r') as zip_ref:
             zip_ref.extractall(temp_extract_dir)
-            
-        # return list of files to process to be converted to zip or folder depending on output type
+        
+        # Collect files WITH their relative paths (preserve structure)
         files_to_process = []
-        for item in temp_extract_dir.iterdir():
-            if item.is_file(): files_to_process.append(item)
-            elif item.is_dir():
-                for f in item.rglob("*"):
-                    if f.is_file(): files_to_process.append(f)
-        # shutil.rmtree(temp_extract_dir)
-
-        return {"game_title": game_title, "user_id": user_id, "date": date_str, "username": username, "source_files": files_to_process, "temp_dir": temp_extract_dir}
+        for root, dirs, files in os.walk(temp_extract_dir):
+            # Skip __MACOSX
+            dirs[:] = [d for d in dirs if d != '__MACOSX']
+            for file in files:
+                if file != '__MACOSX':  # Also catch standalone __MACOSX files
+                    src_path = Path(root) / file
+                    rel_path = src_path.relative_to(temp_extract_dir)
+                    files_to_process.append((src_path, rel_path))
+        
+        return {
+            "game_title": game_title, 
+            "user_id": user_id, 
+            "date": date_str, 
+            "username": username, 
+            "source_files": files_to_process,  # Now tuples of (abs_path, rel_path)
+            "temp_dir": temp_extract_dir
+        }
 
     def _extract_info_from_eden(self, target_path: Path) -> Dict[str, Any]:
-        # Determine the zip file to use
         if target_path.is_file():
             if target_path.suffix != ".zip":
                 raise ValueError("Eden source must be a .zip file.")
             eden_zip = target_path
         else:
-            # Directory mode: Find all zips, pick newest
             zip_files = [f for f in target_path.iterdir() if f.is_file() and f.suffix == ".zip"]
             if not zip_files:
                 raise ValueError("Eden structure invalid: No zip file found.")
-            
             eden_zip = max(zip_files, key=lambda p: p.stat().st_mtime)
             
         zip_name = eden_zip.stem
@@ -300,21 +294,33 @@ class SaveConverterLogic:
             zip_ref.extractall(temp_extract_dir)
             
         sub_folders = [f for f in temp_extract_dir.iterdir() if f.is_dir()]
-        if not sub_folders: raise ValueError("Eden structure invalid: No Hex ID folder found.")
+        if not sub_folders:
+            raise ValueError("Eden structure invalid: No Hex ID folder found.")
         
         id_folder = sub_folders[0]
         user_id = id_folder.name
         
+        # Collect files WITH their relative paths (preserve structure)
         files_to_process = []
-        for f in id_folder.rglob("*"):
-            if f.is_file(): files_to_process.append(f)
-        # shutil.rmtree(temp_extract_dir)
-
-        return {"game_title": game_title, "user_id": user_id, "date": date_str, "username": "Unknown", "source_files": files_to_process, "temp_dir": temp_extract_dir}
+        for root, dirs, files in os.walk(id_folder):
+            dirs[:] = [d for d in dirs if d != '__MACOSX']
+            for file in files:
+                src_path = Path(root) / file
+                rel_path = src_path.relative_to(id_folder)
+                files_to_process.append((src_path, rel_path))
+        
+        return {
+            "game_title": game_title, 
+            "user_id": user_id, 
+            "date": date_str, 
+            "username": "Unknown", 
+            "source_files": files_to_process,
+            "temp_dir": temp_extract_dir
+        }
 
     # --- Main Conversion Logic ---
 
-# perhaps make title_id a hex type instead of str?
+    # perhaps make title_id a hex type instead of str?
     def convert(self, source_format: str, target_format: str, title_id: str, is_auto_mode: bool = False, remove_tempfiles_when_done: bool = False) -> Tuple[str, str, str]:
         """
         Converts save data.
@@ -359,7 +365,7 @@ class SaveConverterLogic:
             else:
                 raise ValueError(f"Unsupported source format: {source_format}")
 
-            # debug - input file/folder
+            # Debug - input file/folder
             print("Found " + str(info["source_files"]))
             if source_format == "Checkpoint":
                 print("Converting input folder " + str(original_source_name))
@@ -389,17 +395,19 @@ class SaveConverterLogic:
             cp_inner_folder.mkdir(exist_ok=True)
             cp_date_user = cp_inner_folder / f"{date_str} {username}"
             cp_date_user.mkdir(exist_ok=True)
-            for src_file in files_to_copy:
-                shutil.copy2(src_file, cp_date_user / src_file.name)
             
-            zip_filename = f"{cp_id_title}.zip"
-            zip_path = target_path / zip_filename
-            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                for root, _, files in os.walk(cp_inner_folder):
-                    for file in files:
-                        fp = Path(root) / file
-                        arcname = fp.relative_to(target_path)
-                        zipf.write(fp, arcname)
+            # Copy files preserving structure
+            for src_file, rel_path in files_to_copy:
+                # Skip __MACOSX in rel_path
+                if '__MACOSX' in rel_path.parts:
+                    continue
+                
+                dest_file = cp_date_user / rel_path
+                dest_file.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src_file, dest_file)
+            
+            # Create zip from the inner folder
+            output_name = cp_id_title
 
         elif target_format == "JKSV":
             jksv_title_folder = target_path / game_title
@@ -408,45 +416,33 @@ class SaveConverterLogic:
             jksv_zip_path = jksv_title_folder / jksv_zip_name
             temp_dir = info.get("temp_dir")
             with zipfile.ZipFile(jksv_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                for src_file in files_to_copy:
-                    if temp_dir is not None:
-                        rel_path = src_file.relative_to(temp_dir)
-                        arcname = rel_path
-                    else:
-                        arcname = src_file.name
-                    
-                    # Skip __MACOSX folder
-                    if '__MACOSX' in rel_path.parts if temp_dir else '__MACOSX' in src_file.parts:
+                for src_file, rel_path in files_to_copy:
+                    if '__MACOSX' in rel_path.parts:
                         continue
+                    arcname = rel_path  # or f"{user_id}/{rel_path}" for Eden
                     zipf.write(src_file, arcname)
-            zip_filename = jksv_zip_name
-            
+            output_name = jksv_zip_name
+
         elif target_format == "Eden":
             eden_zip_name = f"{game_title} Save Data - {date_str}.zip"
             eden_zip_path = target_path / eden_zip_name
             temp_dir = info.get("temp_dir")
             with zipfile.ZipFile(eden_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                for src_file in files_to_copy:
-                    if temp_dir is not None:
-                        rel_path = src_file.relative_to(temp_dir)
-                        arcname = f"{user_id}/{rel_path}"
-                        
-                        # Skip __MACOSX folder
-                        if '__MACOSX' in rel_path.parts:
-                            continue
-                    else:
-                        arcname = f"{user_id}/{src_file.name}"
+                for src_file, rel_path in files_to_copy:
+                    if '__MACOSX' in rel_path.parts:
+                        continue
+                    arcname = f"{user_id}/{rel_path}"
                     zipf.write(src_file, arcname)
-            zip_filename = eden_zip_name
+            output_name = eden_zip_name
 
         else:
             raise ValueError(f"Unsupported target format: {target_format}")
 
-        # delete tempfiles from a zip extraction if bool is True
+        # Delete tempfiles folder from a zip extraction if remove_tempfiles_when_done bool is True
         if remove_tempfiles_when_done:
             shutil.rmtree(temp_dir)
 
-        # debug - output file/folder
-        print("Conversion Success! \n Output @ " + str(target_path) + "/" + str(zip_filename))
+        # Debug - output file/folder
+        print("Conversion Success! \nOutput @ " + str(target_path) + "/" + str(output_name))
 
-        return zip_filename, original_source_name, status_msg
+        return output_name, original_source_name, status_msg
