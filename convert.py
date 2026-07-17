@@ -56,13 +56,13 @@ class SaveConverterLogic:
         2. Finds the NEWEST folder inside that game folder.
         3. Validates the newest folder's name.
         """
-        if not target_path.name.startswith("0x"):
+        if not target_path.parent.name.startswith("0x"):
             return False
-            
-        inner_dirs = [d for d in target_path.iterdir() if d.is_dir()]
+
+        inner_dirs = [d for d in target_path.parent.iterdir() if d.is_dir()]
         if not inner_dirs:
             return False
-            
+
         newest_inner = max(inner_dirs, key=lambda p: p.stat().st_mtime)
         return self._validate_checkpoint_save(newest_inner)
 
@@ -80,11 +80,14 @@ class SaveConverterLogic:
         Validates JKSV structure: Game Title -> User - YYYY-MM-DD-HH_mm_ss.zip
         Finds the NEWEST zip file in the directory and validates it.
         """
+        print(target_path)
+        print(target_path.parent)
         if target_path.is_file():
             return self._validate_jksv_save(target_path)
-        
+        print("zip file pass")
+
         # Directory mode: Find all zips, pick newest
-        zip_files = [f for f in target_path.iterdir() if f.is_file() and f.suffix == ".zip"]
+        zip_files = [f for f in target_path.parent.iterdir() if f.is_file() and f.suffix == ".zip"]
         if not zip_files:
             return False
         
@@ -94,19 +97,33 @@ class SaveConverterLogic:
     def _validate_jksv_save(self, save_zip: Path) -> bool:
         """
         Check filename format: "String - YYYY-MM-DD_HH-mm-ss"
-        Allows whitespace in 'String' (e.g., "User Name - Date").
+        Allows any characters in 'String' (e.g., "---essx---").
         """
-        # Regex breakdown:
-        # ^              : Start of string
-        # (.+)           : Capture Group 1: One or more of ANY character (including spaces) for the "String" part
-        # \s+-\s+        : One or more spaces, a hyphen, one or more spaces (the separator " - ")
-        # (\d{4}-...)    : Capture Group 2: The specific date/time format
-        # \.zip$         : Ends with .zip
-        pattern = r"^(.+)\s+-\s+(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})\.zip$"
+        filename = save_zip.name
         
-        if re.match(pattern, save_zip.name):
-            return True
-        return False
+        # Split on LAST occurrence of " - " (from right, max 1 split)
+        parts = filename.rsplit(" - ", 1)
+        if len(parts) != 2:
+            return False
+        
+        username_part, rest = parts
+        
+        # Must end with .zip
+        if not rest.endswith(".zip"):
+            return False
+        
+        date_part = rest[:-4]  # Remove .zip
+        
+        # Validate date format: YYYY-MM-DD_HH-mm-ss
+        date_pattern = r"^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$"
+        if not re.match(date_pattern, date_part):
+            return False
+        
+        # Username must not be empty (but can contain any chars including ---)
+        if not username_part.strip():
+            return False
+        
+        return True
 
     def _validate_eden_structure(self, target_path: Path) -> bool:
         """
@@ -179,8 +196,8 @@ class SaveConverterLogic:
             match = re.match(r"(\d{8})-(\d{6})\s+(.+)$", folder_name)
             if match:
                 username = match.group(3)
-                y, m, d, H, M = folder_name[:4], folder_name[4:6], folder_name[6:8], folder_name[9:11], folder_name[11:13]
-                date_str = f"{y}-{m}-{d} {H}:{M}"
+                y, m, d, H, M, S = folder_name[:4], folder_name[4:6], folder_name[6:8], folder_name[9:11], folder_name[11:13], folder_name[13:15]
+                date_str = f"{y}-{m}-{d} {H}:{M}:{S}"
             else:
                 username = "Unknown"
                 date_str = self._get_date_string(datetime.now(), "Checkpoint")
@@ -218,8 +235,8 @@ class SaveConverterLogic:
         match = re.match(r"(\d{8})-(\d{6})\s+(.+)$", inner_name)
         if match:
             username = match.group(3)
-            y, m, d, H, M = folder_name[:4], folder_name[4:6], folder_name[6:8], folder_name[9:11], folder_name[11:13]
-            date_str = f"{y}-{m}-{d} {H}:{M}"
+            y, m, d, H, M, S = folder_name[:4], folder_name[4:6], folder_name[6:8], folder_name[9:11], folder_name[11:13], folder_name[13:15]
+            date_str = f"{y}-{m}-{d} {H}:{M}:{S}"
         else:
             date_str = self._get_date_string(datetime.now(), "Checkpoint")
             username = inner_name
@@ -444,7 +461,7 @@ class SaveConverterLogic:
                 for src_file, rel_path in files_to_copy:
                     if '__MACOSX' in rel_path.parts:
                         continue
-                    arcname = rel_path  # or f"{user_id}/{rel_path}" for Eden
+                    arcname = rel_path
                     zipf.write(src_file, arcname)
             output_name = jksv_zip_name
 
