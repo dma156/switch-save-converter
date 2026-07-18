@@ -209,7 +209,7 @@ class SaveConverterLogic:
                     date_dt = datetime.now()
                     date_str = self._get_date_string(date_dt, "Checkpoint")
             else:
-                username = "Unknown"
+                username = "Unknown User"
                 date_dt = datetime.now()
                 date_str = self._get_date_string(date_dt, "Checkpoint")
             
@@ -388,14 +388,17 @@ class SaveConverterLogic:
             "user_id": user_id, 
             "date": date_str,
             "date_dt": date_dt,
-            "username": "Unknown", 
+            "username": "Unknown User", 
             "source_files": files_to_process,
             "temp_dir": temp_extract_dir
         }
 
     # --- Main Conversion Logic ---
 
-    def convert(self, source_format: str, target_format: str, title_id: str, is_auto_mode: bool = False, remove_tempfiles_when_done: bool = False) -> Tuple[str, str, str]:
+    # Add this parameter signature change in convert method:
+    def convert(self, source_format: str, target_format: str, title_id: str, 
+        is_auto_mode: bool = False, remove_tempfiles_when_done: bool = False, 
+        skip_validation: bool = False) -> Tuple[str, str, str]:
         """
         Converts save data.
         Output files are saved in: script_directory/output/target_format/
@@ -423,11 +426,14 @@ class SaveConverterLogic:
             source_path = self.base_path
             original_source_name = source_path.name
             status_msg = f"Manual selection: {original_source_name}"
+        
+        # Sanity Check - Skip if validation is disabled
+        if not skip_validation:
+            self._verify_source_format(source_path, source_format, is_auto_mode)
+        else:
+            print("WARNING: Format validation skipped by user request.")
 
-        # Sanity Check
-        self._verify_source_format(source_path, source_format, is_auto_mode)
-
-        # Extract Info
+        # Extract Info - Still extract even if validation is skipped
         info = {}
         try:
             if source_format == "Checkpoint":
@@ -446,7 +452,12 @@ class SaveConverterLogic:
             else:
                 print("Converting input file " + str(original_source_name))
         except Exception as e:
-            raise RuntimeError(f"Failed to parse source data: {str(e)}")        
+            # If validation was skipped, provide a more helpful error message
+            if skip_validation:
+                raise RuntimeError(f"Failed to parse source data (validation skipped): {str(e)}. "
+                                  f"Check that the source matches the expected format manually.")
+            else:
+                raise RuntimeError(f"Failed to parse source data: {str(e)}")    
 
         # --- Output Directory Logic ---
         script_dir = Path(__file__).parent.resolve()

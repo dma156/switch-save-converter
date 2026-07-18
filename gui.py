@@ -8,18 +8,18 @@ Features:
 - No custom autocomplete logic; uses standard Tkinter behavior.
 - Checkbox for cleaning temporary extraction files after conversion.
 - Scrollable path display for long filepaths.
+- Option to disable all validation checks.
 """
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from pathlib import Path
 from convert import SaveConverterLogic
 
-
 class FolderProcessorApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Switch Save Converter")
-        self.root.geometry("800x450")  # Increased height for new checkbox
+        self.root.geometry("800x500")  # Increased height for new checkboxes
         
         self.selected_path = None
         self.mode = tk.StringVar(value="manual")  # 'manual' or 'newest'
@@ -37,6 +37,9 @@ class FolderProcessorApp:
         
         # Temporary files cleanup checkbox
         self.remove_tempfiles_var = tk.BooleanVar(value=False)
+        
+        # Disable validation checkbox
+        self.disable_validation_var = tk.BooleanVar(value=False)
 
         # --- UI Layout ---
         
@@ -123,6 +126,26 @@ class FolderProcessorApp:
         )
         self.cleanup_hint.pack(anchor=tk.W, padx=20)
 
+        # Disable Validation Checkbox
+        validation_frame = tk.Frame(root)
+        validation_frame.pack(pady=5)
+        
+        self.validation_checkbutton = tk.Checkbutton(
+            validation_frame,
+            text="Disable all format validation",
+            variable=self.disable_validation_var,
+            font=("Arial", 10)
+        )
+        self.validation_checkbutton.pack(anchor=tk.W, padx=20)
+        
+        # Warning label for validation disabling
+        self.validation_warning = tk.Label(
+            validation_frame,
+            text="Check this if you wish to manually name required saves yourself, or if you have issues with validation",
+            font=("Arial", 9)
+        )
+        self.validation_warning.pack(anchor=tk.W, padx=20)
+
         # Action Button
         self.process_btn = tk.Button(root, text="Convert", command=self.process_folder, 
                                      bg="#4CAF50", fg="white", font=("Arial", 12), state=tk.DISABLED)
@@ -135,6 +158,7 @@ class FolderProcessorApp:
         # Store references for visibility control
         self.title_id_frame = title_id_frame
         self.cleanup_frame = cleanup_frame
+        self.validation_frame = validation_frame
         
         # Initial setup
         self.update_ui_state()
@@ -327,6 +351,7 @@ class FolderProcessorApp:
         is_auto = self.mode.get() == "newest"
         title_id = self.title_id_var.get().strip()
         remove_tempfiles = self.remove_tempfiles_var.get()
+        skip_validation = self.disable_validation_var.get()
 
         # Validation for Custom Inputs
         valid_formats = ["Checkpoint", "Eden", "JKSV"]
@@ -343,6 +368,17 @@ class FolderProcessorApp:
             messagebox.showerror("Invalid Selection", "Source and Target cannot be the same!")
             return
 
+        # Warn user about skipping validation
+        if skip_validation:
+            warn_result = messagebox.askyesno(
+                "Skip Validation Warning",
+                "You have disabled all format validation.\n\n"
+                "This may produce invalid output if the source doesn't match the expected format.\n\n"
+                "Continue anyway?"
+            )
+            if not warn_result:
+                return
+
         # No longer restricting Eden in auto mode - now supports Eden -> Checkpoint/JKSV
 
         # Validate Title ID for Eden (optional but recommended)
@@ -354,22 +390,29 @@ class FolderProcessorApp:
         self.root.update()
 
         try:
-            # Pass title_id and remove_tempfiles to the converter
+            # Pass title_id, remove_tempfiles, and skip_validation to the converter
             converter = SaveConverterLogic(self.selected_path)
             zip_filename, original_name, status_msg = converter.convert(
                 source_format, 
                 target_format, 
                 title_id=title_id, 
                 is_auto_mode=is_auto, 
-                remove_tempfiles_when_done=remove_tempfiles
+                remove_tempfiles_when_done=remove_tempfiles,
+                skip_validation=skip_validation
             )
             
             self.status_var.set(f"{status_msg} -> {target_format}")
             self.root.update()
             
-            cleanup_note = " (temp files removed)" if remove_tempfiles else ""
-            self.status_var.set(f"Success! Created {zip_filename}{cleanup_note}")
-            messagebox.showinfo("Success", f"Conversion complete!\nSource: {original_name}\nCreated: {zip_filename}{cleanup_note}")
+            notes = []
+            if remove_tempfiles:
+                notes.append("temp files removed")
+            if skip_validation:
+                notes.append("validation skipped")
+            
+            note_str = f" ({', '.join(notes)})" if notes else ""
+            self.status_var.set(f"Success! Created {zip_filename}{note_str}")
+            messagebox.showinfo("Success", f"Conversion complete!\n\nSource: {original_name}\n\nCreated: {zip_filename}{note_str}")
 
         except FileNotFoundError as e:
             self.status_var.set("Error: Folder not found.")
