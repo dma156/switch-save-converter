@@ -69,6 +69,36 @@ Eden will not accept the save when importing without the folder inside matching 
 		├── save
 ```
 
+## Development
+
+```
+python -m venv venv
+source venv/bin/activate
+# Windows:
+venv\Scripts\activate pip install -r requirements.txt python main.py
+```
+
+### Build Executable
+
+**Windows:**
+
+```build_windows.bat```
+
+**macOS/Linux:**
+
+```chmod +x build_unix.sh ./build_unix.sh```
+
+## Distribution
+
+- **Windows:** Share `SwitchSaveConverter.exe` from `dist/`
+- **macOS:** Share `SwitchSaveConverter.app` from `dist/`
+- **Linux:** Share executable with appropriate libraries
+
+## Troubleshooting
+
+- Missing icons? Copy PNG/JPG files to `icons/` folder
+- Permission errors on Linux/macOS: `chmod +x dist/SwitchSaveConverter`
+
 ### Acknowledgements
 
 - [Forked Switch Games JSON Repo](https://github.com/Producdevity/switch-games-json)
