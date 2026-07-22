@@ -54,7 +54,7 @@ A zip file with naming convention of `Switch User - Date` in format `User - YYYY
 ```
 
 ### Eden
-Eden exports saves in zip format with a folder inside. Therefore no folder structure will be checked. This singular zip file has the naming format of `Game Name Save Data - Date.zip` e.g. `PocketPals Purpl save data - 2026-05-20 18_02.zip` or `Tomisdashing Life_ Living the Nightmare save data - 2026-05-28 17_36.zip`.
+Eden exports saves in zip format with a folder inside. This singular zip file has the naming format of `Game Name Save Data - Date.zip` e.g. `PocketPals Purpl save data - 2026-05-20 18_02.zip` or `Tomisdashing Life_ Living the Nightmare save data - 2026-05-28 17_36.zip`.
 
 Inside will be a folder named after the Switch Title ID (so without the 0x0 hex prefix) e.g. `01008F6D12349`, then inside that folder will be the actual save files. 
 
