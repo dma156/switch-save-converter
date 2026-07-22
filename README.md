@@ -49,5 +49,10 @@ JKSV > Eden DONE
 Eden > JKSV WIP
 Eden > checkpoint WIP
 
+### Acknowledgements
+
+[Forked Switch Games JSON Repo](https://github.com/Producdevity/switch-games-json)
+[Original Switch Games JSON Repo](https://github.com/fmartingr/switch-games-json)
+[SwitchBrew](https://switchbrew.org/w/index.php?title=Title_list/Games)
 
 

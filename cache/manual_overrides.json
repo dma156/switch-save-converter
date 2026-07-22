@@ -1,0 +1,12 @@
+{
+  "id_to_name": {
+    "0100ABF008968000": "Pokemon Sword",
+    "0100A3D008C5C000": "Pokemon Scarlet",
+    "01008F6008C5E000": "Pokemon Violet"
+  },
+  "name_to_id": {
+    "pokemon sword": "0100ABF008968000",
+    "pokemon scarlet": "0100A3D008C5C000",
+    "pokemon violet": "01008F6008C5E000"
+  }
+}

@@ -6,3 +6,4 @@ dist/
 .DS_Store
 output/
 in and out/
+cache/cache_timestamp.txt

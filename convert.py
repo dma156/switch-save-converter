@@ -12,6 +12,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 from typing import Tuple, Dict, Any
+from mapping import get_mapper
 
 
 class SaveConverterLogic:
@@ -186,9 +187,14 @@ class SaveConverterLogic:
             raise ValueError(f"Unknown source format: {expected_format}")
 
     # --- Extraction Logic ---
-
-    def _extract_info_from_checkpoint(self, target_path: Path) -> Dict[str, Any]:
+    def _extract_info_from_checkpoint(self, target_path: Path, 
+                                       title_id_override: str = None,
+                                       game_name_override: str = None) -> Dict[str, Any]:
+        mapper = get_mapper()
+        
+        # Determine if we're in auto mode (0x folder) or manual mode (date-user folder)
         if target_path.name.startswith("0x"):
+            # Auto mode: target_path is the "0xTITLE_ID GameName" folder
             id_title_folder = target_path
             folder_name = target_path.name
             
@@ -197,68 +203,65 @@ class SaveConverterLogic:
                 raise ValueError("Checkpoint structure invalid: No save folder found.")
             date_user_folder = max(inner_folders, key=lambda p: p.stat().st_mtime)
         else:
+            # Manual mode: target_path is the date-user folder.
+            # Try to get the title ID from the parent folder.
             date_user_folder = target_path
             folder_name = target_path.name
-            match = re.match(r"(\d{8})-(\d{6})\s+(.+)$", folder_name)
-            if match:
-                username = match.group(3)
-                try:
-                    date_dt = datetime.strptime(folder_name[:15], "%Y%m%d-%H%M%S")
-                    date_str = self._get_date_string(date_dt, "Checkpoint")
-                except ValueError:
-                    date_dt = datetime.now()
-                    date_str = self._get_date_string(date_dt, "Checkpoint")
-            else:
-                username = "Unknown User"
-                date_dt = datetime.now()
-                date_str = self._get_date_string(date_dt, "Checkpoint")
-            
-            # Collect files with relative paths
-            files_to_process = []
-            for root, dirs, files in os.walk(date_user_folder):
-                dirs[:] = [d for d in dirs if d != '__MACOSX']
-                for file in files:
-                    src_path = Path(root) / file
-                    rel_path = src_path.relative_to(date_user_folder)
-                    files_to_process.append((src_path, rel_path))
-            
-            return {
-                "game_title": "UnknownGame",
-                "user_id": "UnknownID",
-                "date": date_str,
-                "date_dt": date_dt,
-                "username": username,
-                "source_files": files_to_process,
-                "temp_dir": None
-            }
-
-        game_title = folder_name
+            id_title_folder = target_path.parent if target_path.parent.name.startswith("0x") else None
+        
+        # --- Parse title ID and game name ---
         user_id = ""
-        if folder_name.startswith("0x"):
-            user_id = folder_name[:2]
-            game_title = folder_name[2:].strip()
-            if not game_title:
-                game_title = "Unknown Game"
-        else:
-            user_id = folder_name
-            game_title = "Unknown Game"
-
+        game_title = ""
+        mapper_verified = False
+        
+        if id_title_folder and id_title_folder.name.startswith("0x"):
+            # Folder name format: "0xTITLE_ID GameName" or "0xTITLE_ID"
+            stripped = id_title_folder.name[2:].strip()
+            parts = stripped.split(None, 1)
+            if parts:
+                raw_id = parts[0]
+                user_id = raw_id.upper()
+                game_title = parts[1].strip() if len(parts) > 1 else ""
+            
+            # Look up game name via mapper
+            lookup_result = mapper.lookup_game_by_id(user_id)
+            if lookup_result:
+                game_title = lookup_result
+                mapper_verified = True
+        
+        # --- Fallback: use GUI-provided overrides when path didn't yield results ---
+        if not user_id and title_id_override:
+            user_id = mapper._normalize_tid(title_id_override)
+            lookup_result = mapper.lookup_game_by_id(user_id)
+            if lookup_result:
+                game_title = lookup_result
+                mapper_verified = True
+        
+        if not game_title and game_name_override:
+            game_title = game_name_override
+            # If we have a game name but no ID, try reverse lookup
+            if not user_id:
+                looked_up_id = mapper.lookup_id_by_name(game_name_override)
+                if looked_up_id:
+                    user_id = looked_up_id
+                    mapper_verified = True
+        
+        # --- Parse date and username from the date-user folder name ---
         inner_name = date_user_folder.name
         match = re.match(r"(\d{8})-(\d{6})\s+(.+)$", inner_name)
         if match:
             username = match.group(3)
             try:
                 date_dt = datetime.strptime(inner_name[:15], "%Y%m%d-%H%M%S")
-                date_str = self._get_date_string(date_dt, "Checkpoint")
             except ValueError:
                 date_dt = datetime.now()
-                date_str = self._get_date_string(date_dt, "Checkpoint")
         else:
-            date_dt = datetime.now()
-            date_str = self._get_date_string(date_dt, "Checkpoint")
             username = inner_name
+            date_dt = datetime.now()
         
-        # Collect files with relative paths
+        date_str = self._get_date_string(date_dt, "Checkpoint")
+        
+        # --- Collect files with relative paths ---
         files_to_process = []
         for root, dirs, files in os.walk(date_user_folder):
             dirs[:] = [d for d in dirs if d != '__MACOSX']
@@ -266,15 +269,16 @@ class SaveConverterLogic:
                 src_path = Path(root) / file
                 rel_path = src_path.relative_to(date_user_folder)
                 files_to_process.append((src_path, rel_path))
-
+        
         return {
-            "game_title": game_title, 
-            "user_id": user_id, 
+            "game_title": game_title if game_title else "UnknownGame",
+            "user_id": user_id if user_id else "UnknownID",
             "date": date_str,
             "date_dt": date_dt,
-            "username": username, 
-            "source_files": files_to_process, 
-            "temp_dir": None
+            "username": username,
+            "source_files": files_to_process,
+            "temp_dir": None,
+            "mapper_verified": mapper_verified
         }
 
     def _extract_info_from_jksv(self, target_path: Path) -> Dict[str, Any]:
@@ -394,11 +398,9 @@ class SaveConverterLogic:
         }
 
     # --- Main Conversion Logic ---
-
-    # Add this parameter signature change in convert method:
-    def convert(self, source_format: str, target_format: str, title_id: str, 
-        is_auto_mode: bool = False, remove_tempfiles_when_done: bool = False, 
-        skip_validation: bool = False) -> Tuple[str, str, str]:
+    def convert(self, source_format, target_format, title_id=None,
+        game_name_override=None, is_auto_mode=False,
+        remove_tempfiles_when_done=False, skip_validation=False):
         """
         Converts save data.
         Output files are saved in: script_directory/output/target_format/
@@ -433,11 +435,15 @@ class SaveConverterLogic:
         else:
             print("WARNING: Format validation skipped by user request.")
 
-        # Extract Info - Still extract even if validation is skipped
+        # Extract Info - Still extract even if validation is skipped ?
         info = {}
         try:
             if source_format == "Checkpoint":
-                info = self._extract_info_from_checkpoint(source_path)
+                info = self._extract_info_from_checkpoint(
+                    source_path,
+                    title_id_override=title_id,
+                    game_name_override=game_name_override
+                )
             elif source_format == "JKSV":
                 info = self._extract_info_from_jksv(source_path)
             elif source_format == "Eden":
@@ -473,6 +479,11 @@ class SaveConverterLogic:
         date_dt = info["date_dt"]
         username = info["username"]
         temp_dir = info.get("temp_dir")
+
+        if game_name_override:
+            game_title = game_name_override
+        if title_id:
+            user_id = title_id
 
         # Get target-format-specific date string, then sanitize globally
         date_str = self._get_date_string(date_dt, target_format)
