@@ -23,7 +23,8 @@ class SaveConverterLogic:
         """
         Parse a date string into datetime based on source format.
         """
-        # YYYY-MM-DD HH_mm (HH:mm is attempted in the Eden Android emulator but is replace by HH_mm)
+        # YYYY-MM-DD HH_mm (HH:mm is attempted in the Eden Android emulator but
+        # is replace by HH_mm)
         if save_format == "Eden":
             return datetime.strptime(date_str, "%Y-%m-%d %H_%M")
         # YYYYMMDD-HHmmss
@@ -67,11 +68,11 @@ class SaveConverterLogic:
         """
         if not target_path.name.startswith("0x"):
             return False
-            
+
         inner_dirs = [d for d in target_path.iterdir() if d.is_dir()]
         if not inner_dirs:
             return False
-            
+
         newest_inner = max(inner_dirs, key=lambda p: p.stat().st_mtime)
         return self._validate_checkpoint_save(newest_inner)
 
@@ -91,45 +92,47 @@ class SaveConverterLogic:
         """
         if target_path.is_file():
             return self._validate_jksv_save(target_path)
-        
+
         # Directory mode: Find all zips, pick newest
-        zip_files = [f for f in target_path.iterdir() if f.is_file() and f.suffix == ".zip"]
+        zip_files = [f for f in target_path.iterdir() if f.is_file()
+                     and f.suffix == ".zip"]
         if not zip_files:
             return False
-        
+
         newest_zip = max(zip_files, key=lambda p: p.stat().st_mtime)
         return self._validate_jksv_save(newest_zip)
 
     def _validate_jksv_save(self, save_zip: Path) -> bool:
         """
         Check filename format: "String - YYYY-MM-DD_HH-mm-ss"
-        Allows any characters in 'String' (e.g., "---esx-'"). 
-        N.B. JKSV will not allow colons in names and will not save the zip file if a colon is manually added to the filename.
+        Allows any characters in 'String' (e.g., "---esx-'").
+        N.B. JKSV will not allow colons in names and will not save the zip file 
+        if a colon is manually added to the filename.
         """
         filename = save_zip.name
-        
+
         # Split on LAST occurrence of " - " (from right, max 1 split)
         parts = filename.rsplit(" - ", 1)
         if len(parts) != 2:
             return False
-        
+
         username_part, rest = parts
-        
+
         # Must end with .zip
         if not rest.endswith(".zip"):
             return False
-        
+
         date_part = rest[:-4]  # Remove .zip
-        
+
         # Validate date format: YYYY-MM-DD_HH-mm-ss
         date_pattern = r"^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$"
         if not re.match(date_pattern, date_part):
             return False
-        
+
         # Username must not be empty (but can contain any chars including ---)
         if not username_part.strip():
             return False
-        
+
         return True
 
     def _validate_eden_structure(self, target_path: Path) -> bool:
@@ -141,12 +144,13 @@ class SaveConverterLogic:
             if target_path.suffix != ".zip":
                 return False
             return self._validate_eden_save(target_path)
-        
+
         # Directory mode: Find all zips, pick newest
-        zip_files = [f for f in target_path.iterdir() if f.is_file() and f.suffix == ".zip"]
+        zip_files = [f for f in target_path.iterdir() if f.is_file()
+                     and f.suffix == ".zip"]
         if not zip_files:
             return False
-        
+
         newest_zip = max(zip_files, key=lambda p: p.stat().st_mtime)
         return self._validate_eden_save(newest_zip)
 
@@ -154,66 +158,94 @@ class SaveConverterLogic:
         """
         Check filename format: "Game Name save data - YYYY-MM-DD HH_mm"
         """
-        if re.match(r'^(.+)\s+save\s+data\s+-\s+(\d{4}-\d{2}-\d{2}\s+\d{2}_\d{2})\.zip$', save_zip.name):
+        if re.match(
+            r'^(.+)\s+save\s+data\s+-\s+(\d{4}-\d{2}-\d{2}\s+\d{2}_\d{2})\.zip$',
+                save_zip.name):
             return True
         return False
 
-    def _verify_source_format(self, target_path: Path, expected_format: str, is_auto_mode: bool) -> None:
+    def _verify_source_format(
+            self,
+            target_path: Path,
+            expected_format: str,
+            is_auto_mode: bool) -> None:
         """Sanity check: Ensures the path matches the expected format."""
         if expected_format == "Checkpoint":
             if not is_auto_mode:
                 if not self._validate_checkpoint_save(target_path):
-                    raise ValueError(f"Format 'Checkpoint' mismatch in '{target_path.name}'.\nExpected folder name: \"DateTime User\" e.g. 20260422-193917 USERNAME")
+                    raise ValueError(
+                        f"Format 'Checkpoint' mismatch in '{target_path.name}'."
+                            + "\nExpected folder name: "
+                            + "\"DateTime User\" e.g. 20260422-193917 USERNAME")
             else:
                 if not self._validate_checkpoint_structure(target_path):
-                    raise ValueError(f"Format 'Checkpoint' mismatch in '{target_path.name}'.\nExpected: Folder starts with '0x' and contains a 'DateTime User' subfolder.")
-        
+                    raise ValueError(
+                        f"Format 'Checkpoint' mismatch in '{target_path.name}'."
+                            + "\nExpected: Folder starts with "
+                            + "'0x' and contains a 'DateTime User' subfolder.")
+
         elif expected_format == "JKSV":
             if not is_auto_mode:
                 if target_path.is_file():
                     if not self._validate_jksv_save(target_path):
-                        raise ValueError(f"Format 'JKSV' mismatch in '{target_path.name}'.\nExpected zip file named \"User - DateTime\".")
+                        raise ValueError(
+                            f"Format 'JKSV' mismatch in '{target_path.name}'."
+                                +"\nExpected zip file named \"User - DateTime\".")
                 else:
                     if not self._validate_jksv_structure(target_path):
-                        raise ValueError(f"Format 'JKSV' mismatch in '{target_path.name}'.\nExpected a zip file named \"User - DateTime\" inside the folder.")
+                        raise ValueError(
+                            f"Format 'JKSV' mismatch in '{target_path.name}'."
+                                +"\nExpected a zip file named \"User - DateTime\""
+                                + " inside the folder.")
             else:
                 if not self._validate_jksv_structure(target_path):
-                    raise ValueError(f"Format 'JKSV' mismatch in '{target_path.name}'.\nExpected: Game Title folder -> User - DateTime.zip")
+                    raise ValueError(
+                        f"Format 'JKSV' mismatch in '{target_path.name}'."
+                            +"\nExpected: Game Title folder -> User - DateTime.zip")
 
         elif expected_format == "Eden":
             if not self._validate_eden_structure(target_path):
-                raise ValueError(f"Format 'Eden' mismatch in '{target_path.name}'.\nExpected: \"[Game Name] save data - YYYY-MM-DD HH_mm\".zip")
+                raise ValueError(
+                    f"Format 'Eden' mismatch in '{target_path.name}'."
+                        +"\nExpected: \"[Game Name] save data - YYYY-MM-DD HH_mm\".zip")
         else:
             raise ValueError(f"Unknown source format: {expected_format}")
 
     # --- Extraction Logic ---
-    def _extract_info_from_checkpoint(self, target_path: Path, 
-                                       title_id_override: str = None,
-                                       game_name_override: str = None) -> Dict[str, Any]:
+    def _extract_info_from_checkpoint(self,
+                                      target_path: Path,
+                                      title_id_override: str = None,
+                                      game_name_override: str = None) -> Dict[str,
+                                                                              Any]:
         mapper = get_mapper()
-        
-        # Determine if we're in auto mode (0x folder) or manual mode (date-user folder)
+
+        # Determine if we're in auto mode (0x folder) or manual mode (date-user
+        # folder)
         if target_path.name.startswith("0x"):
             # Auto mode: target_path is the "0xTITLE_ID GameName" folder
             id_title_folder = target_path
             folder_name = target_path.name
-            
-            inner_folders = [f for f in id_title_folder.iterdir() if f.is_dir()]
+
+            inner_folders = [
+                f for f in id_title_folder.iterdir() if f.is_dir()]
             if not inner_folders:
-                raise ValueError("Checkpoint structure invalid: No save folder found.")
-            date_user_folder = max(inner_folders, key=lambda p: p.stat().st_mtime)
+                raise ValueError(
+                    "Checkpoint structure invalid: No save folder found.")
+            date_user_folder = max(
+                inner_folders, key=lambda p: p.stat().st_mtime)
         else:
             # Manual mode: target_path is the date-user folder.
             # Try to get the title ID from the parent folder.
             date_user_folder = target_path
             folder_name = target_path.name
-            id_title_folder = target_path.parent if target_path.parent.name.startswith("0x") else None
-        
+            id_title_folder = target_path.parent if target_path.parent.name.startswith(
+                "0x") else None
+
         # --- Parse title ID and game name ---
         user_id = ""
         game_title = ""
         mapper_verified = False
-        
+
         if id_title_folder and id_title_folder.name.startswith("0x"):
             # Folder name format: "0xTITLE_ID GameName" or "0xTITLE_ID"
             stripped = id_title_folder.name[2:].strip()
@@ -222,13 +254,13 @@ class SaveConverterLogic:
                 raw_id = parts[0]
                 user_id = raw_id.upper()
                 game_title = parts[1].strip() if len(parts) > 1 else ""
-            
+
             # Look up game name via mapper
             lookup_result = mapper.lookup_game_by_id(user_id)
             if lookup_result:
                 game_title = lookup_result
                 mapper_verified = True
-        
+
         # --- Fallback: use GUI-provided overrides when path didn't yield results ---
         if not user_id and title_id_override:
             user_id = mapper._normalize_tid(title_id_override)
@@ -236,7 +268,7 @@ class SaveConverterLogic:
             if lookup_result:
                 game_title = lookup_result
                 mapper_verified = True
-        
+
         if not game_title and game_name_override:
             game_title = game_name_override
             # If we have a game name but no ID, try reverse lookup
@@ -245,7 +277,7 @@ class SaveConverterLogic:
                 if looked_up_id:
                     user_id = looked_up_id
                     mapper_verified = True
-        
+
         # --- Parse date and username from the date-user folder name ---
         inner_name = date_user_folder.name
         match = re.match(r"(\d{8})-(\d{6})\s+(.+)$", inner_name)
@@ -258,9 +290,9 @@ class SaveConverterLogic:
         else:
             username = inner_name
             date_dt = datetime.now()
-        
+
         date_str = self._get_date_string(date_dt, "Checkpoint")
-        
+
         # --- Collect files with relative paths ---
         files_to_process = []
         for root, dirs, files in os.walk(date_user_folder):
@@ -269,7 +301,7 @@ class SaveConverterLogic:
                 src_path = Path(root) / file
                 rel_path = src_path.relative_to(date_user_folder)
                 files_to_process.append((src_path, rel_path))
-        
+
         return {
             "game_title": game_title if game_title else "UnknownGame",
             "user_id": user_id if user_id else "UnknownID",
@@ -289,7 +321,8 @@ class SaveConverterLogic:
             jksv_zip = target_path
             game_title = "Game"
         else:
-            zip_files = [f for f in target_path.iterdir() if f.is_file() and f.suffix == ".zip"]
+            zip_files = [f for f in target_path.iterdir(
+            ) if f.is_file() and f.suffix == ".zip"]
             if not zip_files:
                 raise ValueError("JKSV structure invalid: No zip file found.")
             jksv_zip = max(zip_files, key=lambda p: p.stat().st_mtime)
@@ -308,15 +341,15 @@ class SaveConverterLogic:
         else:
             username = "Unknown User"
             date_dt = datetime.now()
-        
+
         user_id = "UnknownID"
-        
+
         # create temp extract directory
         temp_extract_dir = self.base_path.parent / "_temp_extract"
         temp_extract_dir.mkdir(exist_ok=True)
         with zipfile.ZipFile(jksv_zip, 'r') as zip_ref:
             zip_ref.extractall(temp_extract_dir)
-        
+
         # Collect files WITH their relative paths (preserve structure)
         files_to_process = []
         for root, dirs, files in os.walk(temp_extract_dir):
@@ -326,15 +359,15 @@ class SaveConverterLogic:
                     src_path = Path(root) / file
                     rel_path = src_path.relative_to(temp_extract_dir)
                     files_to_process.append((src_path, rel_path))
-        
+
         date_str = self._get_date_string(date_dt, "JKSV")
-        
+
         return {
-            "game_title": game_title, 
-            "user_id": user_id, 
+            "game_title": game_title,
+            "user_id": user_id,
             "date": date_str,
             "date_dt": date_dt,
-            "username": username, 
+            "username": username,
             "source_files": files_to_process,
             "temp_dir": temp_extract_dir
         }
@@ -345,15 +378,17 @@ class SaveConverterLogic:
                 raise ValueError("Eden source must be a .zip file.")
             eden_zip = target_path
         else:
-            zip_files = [f for f in target_path.iterdir() if f.is_file() and f.suffix == ".zip"]
+            zip_files = [f for f in target_path.iterdir(
+            ) if f.is_file() and f.suffix == ".zip"]
             if not zip_files:
                 raise ValueError("Eden structure invalid: No zip file found.")
             eden_zip = max(zip_files, key=lambda p: p.stat().st_mtime)
-            
+
         zip_name = eden_zip.stem
         parts = zip_name.rsplit(" - ", 1)
         if len(parts) == 2:
-            game_raw = parts[0].replace("save data", "").replace("Save Data", "").strip()
+            game_raw = parts[0].replace(
+                "save data", "").replace("Save Data", "").strip()
             date_part = parts[1]
             game_title = game_raw
             try:
@@ -363,19 +398,19 @@ class SaveConverterLogic:
         else:
             game_title = "Unknown Game"
             date_dt = datetime.now()
-        
+
         temp_extract_dir = self.base_path.parent / "_temp_extract"
         temp_extract_dir.mkdir(exist_ok=True)
         with zipfile.ZipFile(eden_zip, 'r') as zip_ref:
             zip_ref.extractall(temp_extract_dir)
-            
+
         sub_folders = [f for f in temp_extract_dir.iterdir() if f.is_dir()]
         if not sub_folders:
             raise ValueError("Eden structure invalid: No Hex ID folder found.")
-        
+
         id_folder = sub_folders[0]
         user_id = id_folder.name
-        
+
         # Collect files WITH their relative paths (preserve structure)
         files_to_process = []
         for root, dirs, files in os.walk(id_folder):
@@ -384,23 +419,23 @@ class SaveConverterLogic:
                 src_path = Path(root) / file
                 rel_path = src_path.relative_to(id_folder)
                 files_to_process.append((src_path, rel_path))
-        
+
         date_str = self._get_date_string(date_dt, "Eden")
-        
+
         return {
-            "game_title": game_title, 
-            "user_id": user_id, 
+            "game_title": game_title,
+            "user_id": user_id,
             "date": date_str,
             "date_dt": date_dt,
-            "username": "Unknown User", 
+            "username": "Unknown User",
             "source_files": files_to_process,
             "temp_dir": temp_extract_dir
         }
 
     # --- Main Conversion Logic ---
     def convert(self, source_format, target_format, title_id=None,
-        game_name_override=None, is_auto_mode=False,
-        remove_tempfiles_when_done=False, skip_validation=False):
+                game_name_override=None, is_auto_mode=False,
+                remove_tempfiles_when_done=False, skip_validation=False):
         """
         Converts save data.
         Output files are saved in: script_directory/output/target_format/
@@ -416,10 +451,11 @@ class SaveConverterLogic:
                     candidates.append(item)
                 elif item.is_file() and item.suffix == ".zip":
                     candidates.append(item)
-            
+
             if not candidates:
-                raise FileNotFoundError("No save folders or zip files found in the selected directory.")
-            
+                raise FileNotFoundError(
+                    "No save folders or zip files found in the selected directory.")
+
             latest_item = max(candidates, key=lambda p: p.stat().st_mtime)
             source_path = latest_item
             original_source_name = latest_item.name
@@ -428,10 +464,11 @@ class SaveConverterLogic:
             source_path = self.base_path
             original_source_name = source_path.name
             status_msg = f"Manual selection: {original_source_name}"
-        
+
         # Sanity Check - Skip if validation is disabled
         if not skip_validation:
-            self._verify_source_format(source_path, source_format, is_auto_mode)
+            self._verify_source_format(
+                source_path, source_format, is_auto_mode)
         else:
             print("WARNING: Format validation skipped by user request.")
 
@@ -460,19 +497,20 @@ class SaveConverterLogic:
         except Exception as e:
             # If validation was skipped, provide a more helpful error message
             if skip_validation:
-                raise RuntimeError(f"Failed to parse source data (validation skipped): {str(e)}. "
-                                  f"Check that the source matches the expected format manually.")
+                raise RuntimeError(
+                    f"Failed to parse source data (validation skipped): {str(e)}. "
+                        + f"Check that the source matches the expected format manually.")
             else:
-                raise RuntimeError(f"Failed to parse source data: {str(e)}")    
+                raise RuntimeError(f"Failed to parse source data: {str(e)}")
 
         # --- Output Directory Logic ---
         script_dir = Path(__file__).parent.resolve()
         output_base_dir = script_dir / "in and out" / "output"
         target_path = output_base_dir / target_format
-        
+
         output_base_dir.mkdir(exist_ok=True)
         target_path.mkdir(exist_ok=True)
-        
+
         files_to_copy = info["source_files"]
         game_title = info["game_title"]
         user_id = info["user_id"]
@@ -488,7 +526,7 @@ class SaveConverterLogic:
         # Get target-format-specific date string, then sanitize globally
         date_str = self._get_date_string(date_dt, target_format)
         date_str = self._sanitize_for_filename(date_str)
-        
+
         # Sanitize all output components globally
         game_title = self._sanitize_for_filename(game_title)
         username = self._sanitize_for_filename(username)
@@ -500,20 +538,20 @@ class SaveConverterLogic:
             cp_inner_folder.mkdir(exist_ok=True)
             cp_date_user = cp_inner_folder / f"{date_str} {username}"
             cp_date_user.mkdir(exist_ok=True)
-            
+
             # Copy files preserving structure
             for src_file, rel_path in files_to_copy:
                 # Skip __MACOSX in rel_path
                 if '__MACOSX' in rel_path.parts:
                     continue
-                
+
                 dest_file = cp_date_user / rel_path
                 dest_file.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src_file, dest_file)
-            
+
             # Create zip from the inner folder
             output_name = cp_id_title
-            output_path = cp_inner_folder # get folder name here somehow
+            output_path = cp_inner_folder  # get folder name here somehow
 
         elif target_format == "JKSV":
             jksv_title_folder = target_path / game_title
@@ -544,7 +582,8 @@ class SaveConverterLogic:
         else:
             raise ValueError(f"Unsupported target format: {target_format}")
 
-        # Delete tempfiles folder from a zip extraction if remove_tempfiles_when_done bool is True
+        # Delete tempfiles folder from a zip extraction if
+        # remove_tempfiles_when_done bool is True
         if remove_tempfiles_when_done and temp_dir:
             shutil.rmtree(temp_dir)
 
