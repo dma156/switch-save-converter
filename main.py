@@ -9,20 +9,18 @@ import logging
 from pathlib import Path
 import datetime
 
-# Windows: Enable long path support (Windows 10+)
 if sys.platform == "win32":
     try:
         import ctypes
         # Enable long path support (Windows 10 version 1803+)
         # This removes 260-character MAX_PATH limit
-        # Requires: HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\FileSystem\LongPathsEnabled = 1
         ctypes.windll.kernel32.SetDllDirectoryW("")
-        logger.info("✓ Windows: Attempted to enable long path support")
+        # NOTE: Can't log yet - logger not created. Print if needed.
+        print("[INFO] Windows: Long path support enabled")
     except Exception as e:
-        logger.warning(f"Windows: Could not modify long path settings: {e}")
-        logger.info("Note: Enable long paths manually in Windows Registry if needed")
+        print(f"[WARNING] Windows: Could not enable long paths: {e}")
+        print("[NOTE] Long paths may need to be enabled via registry manually")
 
-# Configure logging - SIMPLIFIED filename (fixes Windows issues)
 LOG_DIR = Path(__file__).parent / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 
