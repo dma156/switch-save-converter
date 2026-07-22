@@ -4,8 +4,6 @@
 
 Converts save file formats between Eden, Checkpoint and JKSV
 
-Please note that JKSV seems to backup save files much better e.g. Tomadachi Life LTD custom creations are included in the save file, but not in Checkpoint.
-
 ### Save file structure
 
 - Checkpoint
@@ -33,7 +31,8 @@ No folder structure will be checked, just a singular zip file that has the forma
 	> Inside will be a folder named after the 0x0 Switch Hex ID e.g. 01008F6008C5E000
 		> Then inside the folder will be the actual save files
 
-- checklist
+
+#### Checklist
 
 Manual Select
 
@@ -62,10 +61,10 @@ Eden > checkpoint WIP
 
 ### Acknowledgements
 
-[Forked Switch Games JSON Repo](https://github.com/Producdevity/switch-games-json)
+- [Forked Switch Games JSON Repo](https://github.com/Producdevity/switch-games-json)
 
-[Original Switch Games JSON Repo](https://github.com/fmartingr/switch-games-json)
+- [Original Switch Games JSON Repo](https://github.com/fmartingr/switch-games-json)
 
-[SwitchBrew](https://switchbrew.org/w/index.php?title=Title_list/Games)
+- [SwitchBrew](https://switchbrew.org/w/index.php?title=Title_list/Games)
 
 
