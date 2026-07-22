@@ -13,10 +13,14 @@ import datetime
 if sys.platform == "win32":
     try:
         import ctypes
-        # Enable long paths (requires admin or registry setting)
+        # Enable long path support (Windows 10 version 1803+)
+        # This removes 260-character MAX_PATH limit
+        # Requires: HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\FileSystem\LongPathsEnabled = 1
         ctypes.windll.kernel32.SetDllDirectoryW("")
-    except:
-        pass  # Ignore if fails
+        logger.info("✓ Windows: Attempted to enable long path support")
+    except Exception as e:
+        logger.warning(f"Windows: Could not modify long path settings: {e}")
+        logger.info("Note: Enable long paths manually in Windows Registry if needed")
 
 # Configure logging - SIMPLIFIED filename (fixes Windows issues)
 LOG_DIR = Path(__file__).parent / "logs"
@@ -41,11 +45,44 @@ logging.basicConfig(
 
 logger = logging.getLogger("SwitchSaveConverter")
 
+def get_app_base_path():
+    """Get the base path whether frozen or in development (Windows-safe)."""
+    if getattr(sys, 'frozen', False):
+        # Frozen executable - use the executable's directory
+        return Path(sys.executable).parent
+    else:
+        # Development - use script location
+        return Path(__file__).parent
+
+def check_resources():
+    """Verify resource files exist (icons, mappings)."""
+    logger.info("Checking resource files...")
+    
+    base_path = get_app_base_path()
+    logger.info(f"Base path: {base_path}")
+    
+    resources = {
+        "icons/": base_path / "icons",
+        "logs/": base_path / "logs",
+    }
+    
+    missing = []
+    for name, path in resources.items():
+        if path.exists():
+            logger.info(f"✓ {name} found at {path}")
+        else:
+            missing.append(name)
+            logger.warning(f"⚠ {name} not found (will use fallback)")
+    
+    if missing:
+        logger.warning(f"Some resources missing: {', '.join(missing)}")
+    
+    return True
+
 def check_dependencies():
     """Verify all required packages are installed."""
     logger.info("Checking dependencies...")
     
-    required = ["Pillow", "tk"]
     missing = []
     
     try:
@@ -62,6 +99,16 @@ def check_dependencies():
         missing.append("tk")
         logger.error("✗ Tkinter not found")
     
+    # Windows: Enable long path support if possible
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            # Enable long paths (requires Windows 10+ and registry setting)
+            ctypes.windll.kernel32.SetDllDirectoryW("")
+            logger.info("✓ Windows long path support attempted")
+        except Exception as e:
+            logger.warning(f"Could not enable long path support: {e}")
+    
     if missing:
         logger.fatal(f"Missing dependencies: {', '.join(missing)}")
         print(f"\nError: Missing packages: {', '.join(missing)}")
@@ -70,30 +117,26 @@ def check_dependencies():
     
     return True
 
-def check_resources():
-    """Verify resource files exist (icons, mappings)."""
-    logger.info("Checking resource files...")
-    
-    resources = {
-        "icons/": Path(__file__).parent / "icons",
-    }
-    
-    missing = []
-    for name, path in resources.items():
-        if path.exists():
-            logger.info(f"✓ {name} found")
-        else:
-            missing.append(name)
-            logger.warning(f"⚠ {name} not found (will use fallback)")
-    
-    if missing:
-        logger.warning(f"Some resources missing: {', '.join(missing)}")
-    
-    return True
-
 def launch_gui():
-    """Start the GUI application."""
+    """Start the GUI application with Windows-compatible paths."""
     logger.info("Launching GUI...")
+    
+    # Helper for Windows/frozen compatibility
+    def get_resource_path(relative_path):
+        """Get absolute path to resource, works for dev and frozen exe."""
+        if getattr(sys, 'frozen', False):
+            # Running as compiled executable (PyInstaller)
+            try:
+                # PyInstaller sets _MEIPASS to extract resources
+                base_path = Path(sys._MEIPASS)
+            except Exception:
+                # Fallback to executable directory
+                base_path = Path(sys.executable).parent
+        else:
+            # Running as script in development
+            base_path = Path(__file__).parent
+        
+        return base_path / relative_path
     
     try:
         import tkinter as tk
@@ -103,25 +146,25 @@ def launch_gui():
         
         root = tk.Tk()
         
-        # Set window icon if available
-        icon_path = Path(__file__).parent / "icons" / "checkpoint.jpg"
+        # Set window icon if available (Windows-fixed)
+        icon_path = get_resource_path("icons/checkpoint.jpg")
+        if not icon_path.exists():
+            icon_path = get_resource_path("icons/checkpoint.png")
+        
         if icon_path.exists():
             try:
                 from PIL import Image, ImageTk
                 img = Image.open(icon_path).resize((64, 64))
                 photo = ImageTk.PhotoImage(img)
                 root.iconphoto(True, photo)
+                logger.info(f"✓ Window icon set: {icon_path}")
             except Exception as e:
                 logger.warning(f"Could not set window icon: {e}")
+        else:
+            logger.info("Window icon not found, using default")
         
         root.title("Switch Save Converter")
         root.geometry("850x550")
-        
-        # Prevent multiple instances (basic)
-        try:
-            root.resizable(True, True)
-        except:
-            pass
         
         app = FolderProcessorApp(root)
         

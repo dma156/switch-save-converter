@@ -27,93 +27,97 @@ except ImportError as e:
 
 class IconFactory:
     """Loads images from icons/ folder with fallback to colored letter placeholders."""
-
+    
+    @staticmethod
+    def get_resource_path(subpath):
+        """Get correct path whether frozen or in development."""
+        if getattr(sys, 'frozen', False):
+            # Running as compiled executable
+            base_path = Path(sys.executable).parent
+        else:
+            # Running as script
+            base_path = Path(__file__).parent
+        
+        return base_path / subpath
+    
     @staticmethod
     def load_checkpoint_icon(size=32):
-        """Load checkpoint.jpg or checkpoint.png from icons/ folder, fallback to blue 'C'"""
+        """Load checkpoint.jpg or checkpoint.png from icons/ folder"""
         if not HAS_PILLOW:
             return None
-
-        # Try both .jpg and .png extensions
+        
+        # Try both .jpg and .png extensions (Windows-friendly)
         img_paths = [
-            Path(__file__).parent / "icons" / "checkpoint.jpg",
-            Path(__file__).parent / "icons" / "checkpoint.png"
+            IconFactory.get_resource_path("icons/checkpoint.jpg"),
+            IconFactory.get_resource_path("icons/checkpoint.png"),
         ]
-
+        
         for img_path in img_paths:
             if img_path.exists():
                 try:
                     img = Image.open(img_path).resize((size, size))
-                    img = img.convert('RGB')  # Ensure RGB for PhotoImage
+                    img = img.convert('RGB')
                     photo = ImageTk.PhotoImage(img)
                     print(f"[ICON] ✓ Loaded: {img_path}")
                     return photo
                 except Exception as e:
                     print(f"[ICON] Failed to load {img_path}: {e}")
-
-        # Fallback: Create blue square with 'C'
+        
+        # Fallback
         print("[ICON] Creating fallback checkpoint icon (blue 'C')")
         img = Image.new('RGB', (size, size), color='#2196F3')
         draw = ImageDraw.Draw(img)
-        draw.text((size // 3, size // 4), 'C', fill='white')
+        draw.text((size//3, size//4), 'C', fill='white')
         return ImageTk.PhotoImage(img)
-
+    
     @staticmethod
     def load_eden_icon(size=32):
-        """Load eden.jpg or eden.png from icons/ folder, fallback to green 'E'"""
         if not HAS_PILLOW:
             return None
-
+        
         img_paths = [
-            Path(__file__).parent / "icons" / "eden.jpg",
-            Path(__file__).parent / "icons" / "eden.png"
+            IconFactory.get_resource_path("icons/eden.jpg"),
+            IconFactory.get_resource_path("icons/eden.png"),
         ]
-
+        
         for img_path in img_paths:
             if img_path.exists():
                 try:
                     img = Image.open(img_path).resize((size, size))
                     img = img.convert('RGB')
-                    photo = ImageTk.PhotoImage(img)
-                    print(f"[ICON] ✓ Loaded: {img_path}")
-                    return photo
+                    return ImageTk.PhotoImage(img)
                 except Exception as e:
                     print(f"[ICON] Failed to load {img_path}: {e}")
-
-        # Fallback: Create green square with 'E'
+        
         print("[ICON] Creating fallback eden icon (green 'E')")
         img = Image.new('RGB', (size, size), color='#4CAF50')
         draw = ImageDraw.Draw(img)
-        draw.text((size // 4, size // 4), 'E', fill='white')
+        draw.text((size//4, size//4), 'E', fill='white')
         return ImageTk.PhotoImage(img)
-
+    
     @staticmethod
     def load_jksv_icon(size=32):
-        """Load jksv.jpg or jksv.png from icons/ folder, fallback to orange 'J'"""
         if not HAS_PILLOW:
             return None
-
+        
         img_paths = [
-            Path(__file__).parent / "icons" / "jksv.jpg",
-            Path(__file__).parent / "icons" / "jksv.png"
+            IconFactory.get_resource_path("icons/jksv.jpg"),
+            IconFactory.get_resource_path("icons/jksv.png"),
         ]
-
+        
         for img_path in img_paths:
             if img_path.exists():
                 try:
                     img = Image.open(img_path).resize((size, size))
                     img = img.convert('RGB')
-                    photo = ImageTk.PhotoImage(img)
-                    print(f"[ICON] ✓ Loaded: {img_path}")
-                    return photo
+                    return ImageTk.PhotoImage(img)
                 except Exception as e:
                     print(f"[ICON] Failed to load {img_path}: {e}")
-
-        # Fallback: Create orange square with 'J'
+        
         print("[ICON] Creating fallback jksv icon (orange 'J')")
         img = Image.new('RGB', (size, size), color='#FF9800')
         draw = ImageDraw.Draw(img)
-        draw.text((size // 3, size // 4), 'J', fill='white')
+        draw.text((size//3, size//4), 'J', fill='white')
         return ImageTk.PhotoImage(img)
 
 

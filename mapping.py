@@ -34,6 +34,16 @@ class TitleIdMapper:
     # Local cache location
     CACHE_DIR = Path(__file__).parent / "cache"
     CACHE_FILE = CACHE_DIR / "title_id_mappings.json"
+    # In mapping.py, find where cache file is created:
+    CACHE_FILE = "title_id_mappings.json"
+
+    # Make it safer for Windows (avoid special chars)
+    import os
+    SAFE_CACHE_FILE = "title_id_mappings.json"  # Already safe
+
+    # If you had timestamps in filename, replace:
+    # timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # BAD on Windows
+    # timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")      # GOOD on Windows
     CACHE_TIMESTAMP_FILE = CACHE_DIR / "cache_timestamp.txt"
 
     # Cache duration: 24 hours (in seconds)
